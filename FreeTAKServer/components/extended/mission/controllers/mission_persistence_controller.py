@@ -622,3 +622,42 @@ class MissionPersistenceController(Controller):
 
     def get_mission_change(self, content_uid) -> MissionChange:
         return self.ses.query(MissionChange).filter(MissionChange.content_resource_uid == content_uid).first()
+
+    def get_mission_change_by_id(self, change_id) -> MissionChange:
+        return self.ses.query(MissionChange).filter(MissionChange.PrimaryKey == change_id).first()
+
+    def delete_mission_content(self, mission_id, uid=None, content_hash=None) -> bool:
+        """remove an item from a mission, by cot uid or by content hash.
+
+        The change records that added the item are removed with it: they carry
+        foreign keys to the rows being deleted, and a client syncing the
+        mission's changes would otherwise be told to add back what was just
+        removed.
+        """
+        try:
+            mission_uid = str(mission_id).lower()
+            removed = False
+
+            for identifier in (uid, content_hash):
+                if not identifier:
+                    continue
+
+                cot = self.ses.query(MissionCoT).filter(
+                    MissionCoT.uid == identifier, MissionCoT.mission_uid == mission_uid).first()
+                if cot is not None:
+                    self.ses.query(MissionChange).filter(MissionChange.cot_detail_uid == cot.uid).delete(synchronize_session=False)
+                    self.ses.delete(cot)
+                    removed = True
+
+                content = self.ses.query(MissionContent).filter(
+                    MissionContent.PrimaryKey == identifier, MissionContent.mission_uid == mission_uid).first()
+                if content is not None:
+                    self.ses.query(MissionChange).filter(MissionChange.content_resource_uid == content.PrimaryKey).delete(synchronize_session=False)
+                    self.ses.delete(content)
+                    removed = True
+
+            self.ses.commit()
+            return removed
+        except Exception as ex:
+            self.ses.rollback()
+            raise ex

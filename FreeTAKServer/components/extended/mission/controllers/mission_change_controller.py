@@ -89,6 +89,17 @@ class MissionChangeController(Controller):
             external_data_uid=external_data_uid,
         )
 
+    def create_mission_content_removal_record(self, mission_uid, creator_uid, content_uid):
+        return self.persistence_controller.create_mission_change(
+                type = "REMOVE_CONTENT",
+                mission_uid=mission_uid,
+                creator_uid=creator_uid,
+                content_uid=content_uid,
+                cot_detail_uid=None,
+                external_data_uid=None,
+                content_resource_uid=None
+            )
+
     def get_mission_changes(self, mission_id, config_loader, *args, **kwargs):
         change_collection = self.domain_controller.create_mission_collection(config_loader)
         change_collection.type = "MissionChange"

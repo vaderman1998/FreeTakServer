@@ -18,6 +18,11 @@ from digitalpy.core.zmanager.action_mapper import ActionMapper
 from digitalpy.core.digipy_configuration.configuration import Configuration
 from digitalpy.core.parsing.load_configuration import LoadConfiguration
 
+from FreeTAKServer.core.configuration.LoggingConstants import LoggingConstants
+from FreeTAKServer.core.configuration.CreateLoggerController import CreateLoggerController
+
+logger = CreateLoggerController("FTS-Mission", logging_constants=LoggingConstants()).getLogger()
+
 if TYPE_CHECKING:
     from FreeTAKServer.core.enterprise_sync.persistence.sqlalchemy.enterprise_sync_data_object import EnterpriseSyncDataObject
 
@@ -56,12 +61,21 @@ class MissionDirector(Controller):
             mission_role_builder.add_object_data(mission.defaultRole)
             mission_record.defaultRole = mission_role_builder.get_result()
 
+        # MissionCoTContentBuilder names its object "MissionContent", which the
+        # record's uids never returns, so every item silently vanished from a
+        # mission's own response while the mission list showed them correctly
         for cot in mission.cots:
-            mission_cot_content_builder = MissionCoTContentBuilder(self.request, self.response, self.action_mapper, self.configuration)
-            mission_cot_content_builder.initialize(self.request, self.response)
-            mission_cot_content_builder.build_empty_object(config_loader, *args, **kwargs)
-            mission_cot_content_builder.add_object_data(cot)
-            mission_cot_content = mission_cot_content_builder.get_result()
+            # an item whose CoT can no longer be resolved must not cost the
+            # client the whole mission, which is what an exception here does
+            try:
+                mission_cot_content_builder = MissionListCoTContentBuilder(self.request, self.response, self.action_mapper, self.configuration)
+                mission_cot_content_builder.initialize(self.request, self.response)
+                mission_cot_content_builder.build_empty_object(config_loader, *args, **kwargs)
+                mission_cot_content_builder.add_object_data(cot)
+                mission_cot_content = mission_cot_content_builder.get_result()
+            except Exception as ex:
+                logger.error("skipping item %s of mission %s: %s", cot.uid, mission.PrimaryKey, ex, exc_info=True)
+                continue
             mission_record.uids = mission_cot_content
         
         for content in mission.contents:

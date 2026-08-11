@@ -221,6 +221,22 @@ class MissionGeneralController(Controller):
         self.response.set_value("mission", serialized_mission_collection)
         return serialized_mission_collection
     
+    def delete_contents_from_mission(self, mission_id: str, config_loader, uid=None, hash=None, creatorUid=None, *args, **kwargs):
+        """remove an item from a mission and record the change
+
+        The change record is what subscribers are notified with, so it is
+        created only when something was actually removed.
+        """
+        removed = self.persistency_controller.delete_mission_content(mission_id, uid=uid, content_hash=hash)
+        self.response.set_value("content_deleted", removed)
+
+        if removed:
+            change = self.change_controller.create_mission_content_removal_record(
+                mission_uid=mission_id, creator_uid=creatorUid, content_uid=uid or hash)
+            self.response.set_value("change_id", change.PrimaryKey)
+
+        return removed
+
     def delete_mission(self, mission_id: str, config_loader, *args, **kwargs):
         """delete a mission and report whether it existed"""
         deleted = self.persistency_controller.delete_mission(mission_id)

@@ -102,6 +102,38 @@ class MissionNotificationController(Controller):
         self.response.set_value('recipients', "*")
         self.response.set_action("publish")
     
+    def send_content_deleted_notification(self, change_id, config_loader, *args, **kwargs):
+        """tell subscribers an item was removed from a mission
+
+        Without this the client that did the delete drops the item but every
+        other subscriber keeps showing it until it resubscribes.
+        """
+        mission_change_db = self.persistence_controller.get_mission_change_by_id(change_id)
+        if mission_change_db is None:
+            return
+
+        mission_content_notification = self.domain_controller.create_mission_change_notification(config_loader)
+
+        mission_content_notification.uid = str(uuid4())
+        mission_content_notification.type = "t-x-m-c"
+        mission_content_notification.how = "h-g-i-g-o"
+        mission_content_notification.detail.mission.type = "CHANGE"
+        mission_content_notification.detail.mission.tool = mission_change_db.mission.tool
+        mission_content_notification.detail.mission.name = mission_change_db.mission.name
+        mission_content_notification.detail.mission.authorUid = mission_change_db.creator_uid
+
+        mission_change = self.domain_controller.complete_mission_change_notification(mission_content_notification, mission_change_db, config_loader)
+        # the removed item is identified by uid, which the shared completion
+        # step only fills in for content that still exists
+        if mission_change_db.content_uid is not None:
+            mission_change.contentUid.text = mission_change_db.content_uid
+
+        # Serializer called by service manager requires the message value
+        self.response.set_value('message', [mission_content_notification])
+
+        self.response.set_value('recipients', "*")
+        self.response.set_action("publish")
+
     def send_external_data_created_notification(self, external_data_id: str, mission_id: str, config_loader, *args, **kwargs):
         mission_external_data_db = self.persistence_controller.get_external_data_by_uid(uid=external_data_id, mission_uid=mission_id)
         builder = MissionExternalDataNotificationBuilder(self.request, self.response, self.action_mapper, self.configuration)

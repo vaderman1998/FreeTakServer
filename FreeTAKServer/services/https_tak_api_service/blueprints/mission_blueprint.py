@@ -164,6 +164,43 @@ def add_mission_contents(mission_id: str):
         
     return return_data, 200
 
+@page.route('/Marti/api/missions/<mission_id>/contents', methods=['DELETE'])
+def delete_mission_contents(mission_id: str):
+    """remove an item from a mission
+
+    TAK clients delete an item by its uid, or a file by its hash, and expect
+    the mission back so they can reconcile what is left.
+    """
+    uid = request.args.get("uid")
+    content_hash = request.args.get("hash")
+    creator_uid = request.args.get("creatorUid")
+    if not uid and not content_hash:
+        return {"message": "a uid or hash is required"}, 400
+
+    try:
+        response = HTTPSTakApiCommunicationController().make_request("DeleteMissionContents", "mission", {"mission_id": mission_id, "uid": uid, "hash": content_hash, "creatorUid": creator_uid}, None, True)
+        deleted = response.get_value("content_deleted")
+        change_id = response.get_value("change_id")
+    except Exception as ex:
+        logger.error("failed deleting contents from mission %s: %s", mission_id, ex, exc_info=True)
+        return {"message": "An error occurred deleting the mission contents."}, 500
+
+    if not deleted:
+        return {"message": f"no content {uid or content_hash} in mission {mission_id}"}, 404
+
+    # subscribers other than the one that deleted it only find out from this
+    HTTPSTakApiCommunicationController().make_request("MissionContentDeletedNotification", "mission", {"change_id": change_id}, None, synchronous=False)
+
+    try:
+        mission = HTTPSTakApiCommunicationController().make_request("GetMission", "mission", {"mission_id": mission_id}, None, True).get_value("mission")
+    except Exception as ex:
+        logger.error("removed content from mission %s but could not return it: %s", mission_id, ex, exc_info=True)
+        mission = None
+
+    if mission is None:
+        return {"version": "3", "type": "Mission", "data": [], "nodeId": config.nodeID}, 200
+    return _as_response(mission), 200
+
 @page.route('/Marti/api/missions/logs/entries', methods=['POST'])
 def add_log_entry():
     request_json = request.get_json() # type: ignore
