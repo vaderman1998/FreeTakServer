@@ -44,7 +44,7 @@ def verify_token(token):
 def get_user_roles(user):
     """Resolve the roles of the authenticated principal.
 
-    API users (the /APIUser table, only creatable from AllowedCLIIPs) keep
+    API users (the /APIUser table, only creatable from AllowCLIIPs) keep
     unrestricted access. System users are restricted by their group.
     """
     from .persistency import dbController

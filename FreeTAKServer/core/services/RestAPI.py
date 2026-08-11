@@ -1328,7 +1328,7 @@ def ConnectionMessage():
 
 @app.route("/APIUser", methods=[restMethods.GET, restMethods.POST, restMethods.DELETE])
 def APIUser():
-    if request.remote_addr in config.AllowedCLIIPs:
+    if request.remote_addr in config.AllowCLIIPs:
         try:
             if request.method == restMethods.POST:
                 json = request.get_json()
@@ -1374,7 +1374,7 @@ def URLGET():
 @app.route("/Clients", methods=[restMethods.GET])
 def Clients():
     try:
-        if request.remote_addr in config.AllowedCLIIPs:
+        if request.remote_addr in config.AllowCLIIPs:
             CommandPipe.put([functionNames.Clients])
             out = CommandPipe.get()
             returnValue = []
@@ -1721,7 +1721,7 @@ def excheck_table():
 def check_status():
     try:
 
-        if request.remote_addr in config.AllowedCLIIPs:
+        if request.remote_addr in config.AllowCLIIPs:
             CommandPipe.put([functionNames.checkStatus])
             FTSServerStatusObject = CommandPipe.get()
             out = ApplyFullJsonController().serialize_model_to_json(FTSServerStatusObject)
