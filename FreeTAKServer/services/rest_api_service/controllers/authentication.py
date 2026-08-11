@@ -11,16 +11,37 @@ auth = HTTPTokenAuth(scheme='Bearer')
 ADMIN_ROLE = "admin"
 USER_ROLE = "user"
 
-# Groups that get read-only access: they may read state and authenticate,
-# but not create/modify/delete users, certificates, federation or CoT.
-READ_ONLY_GROUPS = {"user", "users", "readonly", "read-only", "operator"}
+# Values that grant read-only access: the holder may read state and
+# authenticate, but not create/modify/delete users, certificates, federation
+# or CoT. Anything else, including unrecognized and legacy values, is an
+# administrator, so deployments predating roles are unaffected.
+READ_ONLY_ROLES = {"user", "users", "readonly", "read-only", "operator"}
+
+# the role was originally read from the group column
+READ_ONLY_GROUPS = READ_ONLY_ROLES
 
 
-def role_for_group(group) -> str:
-    """Map a system user's group onto an authorization role."""
-    if group is not None and str(group).strip().lower() in READ_ONLY_GROUPS:
+def role_for_value(value) -> str:
+    """Map a stored role (or legacy group) onto an authorization role."""
+    if value is not None and str(value).strip().lower() in READ_ONLY_ROLES:
         return USER_ROLE
     return ADMIN_ROLE
+
+
+def role_for_user(user) -> str:
+    """Resolve a system user's authorization role.
+
+    The dedicated role column wins; the group column is consulted only for
+    users written before roles had their own field.
+    """
+    role = getattr(user, "role", None)
+    if role is None or str(role).strip() == "":
+        role = getattr(user, "group", None)
+    return role_for_value(role)
+
+
+# retained for callers that pass a bare group value
+role_for_group = role_for_value
 
 
 @auth.verify_token
@@ -54,6 +75,6 @@ def get_user_roles(user):
 
     output = dbController.query_systemUser(query=f'name = "{user}"')
     if output:
-        role = role_for_group(output[0].group)
+        role = role_for_user(output[0])
         return [ADMIN_ROLE, USER_ROLE] if role == ADMIN_ROLE else [USER_ROLE]
     return [USER_ROLE]

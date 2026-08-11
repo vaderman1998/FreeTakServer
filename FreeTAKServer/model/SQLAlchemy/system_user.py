@@ -13,6 +13,11 @@ class SystemUser(Base, UserMixin):
     name = Column(String(15), nullable=False)
     token = Column(String(30), nullable=True)
     password = Column(String(30), nullable=True)
+    # authorization role: "admin" or "user". Kept separate from the channels
+    # below, which are the TAK sense of a group.
+    role = Column(String(15), nullable=True, default=None)
+    # retained so deployments that set a role through the old column keep
+    # working; role takes precedence when both are present
     group = Column(String(15), default=True, nullable=True)
     # comma separated channel names this user's CoT traffic is confined to;
     # empty or null means the public channel only

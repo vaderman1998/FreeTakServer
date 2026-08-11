@@ -57,7 +57,7 @@ from FreeTAKServer.core.parsers.JsonController import JsonController
 from FreeTAKServer.core.serializers.SqlAlchemyObjectController import SqlAlchemyObjectController
 from FreeTAKServer.components.extended.excheck.controllers.ExCheckController import ExCheckController
 from .views.connections_view_controller import ManageConnections
-from .controllers.authentication import auth, ADMIN_ROLE, role_for_group
+from .controllers.authentication import auth, ADMIN_ROLE, role_for_user
 from FreeTAKServer.core.configuration.ChannelConstants import normalize_channel_input
 
 app = Flask(__name__)
@@ -278,6 +278,7 @@ def get_system_users():
         userjson['Name'] = user.name
         userjson["Group"] = user.group
         userjson["Channels"] = user.channels
+        userjson["Role"] = role_for_user(user)
         userjson["Token"] = user.token
         userjson["Password"] = user.password
         userjson["Certs"] = user.certificate_package_name
@@ -314,6 +315,7 @@ def get_system_user(jsondata):
         userjson['Name'] = user.name
         userjson["Group"] = user.group
         userjson["Channels"] = user.channels
+        userjson["Role"] = role_for_user(user)
         userjson["Token"] = user.token
         userjson["Password"] = user.password
         userjson["Certs"] = user.certificate_package_name
@@ -362,6 +364,11 @@ def updateSystemUser(jsondata):
             update_column["token"] = str(systemuser["Token"])
         if "Password" in systemuser:
             update_column["password"] = str(systemuser["Password"])
+        if "Role" in systemuser:
+            update_column["role"] = str(systemuser["Role"])
+        elif "Group" in systemuser:
+            # the role used to be set through the group field
+            update_column["role"] = str(systemuser["Group"])
         if "Group" in systemuser:
             update_column["group"] = str(systemuser["Group"])
         if "Channels" in systemuser:
@@ -1200,7 +1207,7 @@ def authenticate_user():
             return_data = json.dumps({
                 "uid": json_user["uid"],
                 "group": json_user.get("group"),
-                "role": role_for_group(json_user.get("group")),
+                "role": role_for_user(user),
             })
             print('returning data ' + str(return_data))
             return return_data, 200

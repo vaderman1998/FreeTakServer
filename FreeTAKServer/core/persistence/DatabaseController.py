@@ -105,8 +105,9 @@ class DatabaseController:
         from sqlalchemy import text
 
         migrations = {
-            # channel membership for CoT traffic segregation
-            "SystemUser": [("channels", "VARCHAR(255)")],
+            # channel membership for CoT traffic segregation, and the
+            # authorization role formerly read from the group column
+            "SystemUser": [("channels", "VARCHAR(255)"), ("role", "VARCHAR(15)")],
         }
         for table, columns in migrations.items():
             try:

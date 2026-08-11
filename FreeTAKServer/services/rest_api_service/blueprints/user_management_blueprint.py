@@ -87,7 +87,8 @@ def post_system_user():
                                                 token=systemuser["Token"], password=systemuser["Password"],
                                                 uid=user_id,
                                                 certificate_package_name=cert_name + '.zip', device_type = systemuser["DeviceType"],
-                                                channels=normalize_channel_input(systemuser.get("Channels")))
+                                                channels=normalize_channel_input(systemuser.get("Channels")),
+                                                role=systemuser.get("Role", systemuser.get("Group")))
                 data = openfile.read()
                 RestAPICommunicationController().make_request("SaveEnterpriseSyncData", "enterpriseSync", {"file_name":cert_name + '.zip',"objecthash": file_hash, "objectdata": data, "objkeywords": [cert_name + '.zip', user_id, "missionpackage"], "mime_type": "application/zip", "tool": "public", "synctype": "content", "objectuid": file_hash, "length": len(data), "privacy": 1}, None, True)
                 
@@ -109,7 +110,8 @@ def post_system_user():
                 dbController.create_systemUser(name=systemuser["Name"], group=systemuser["Group"],
                                                 token=systemuser["Token"], password=systemuser["Password"],
                                                 uid=user_id, device_type = systemuser["DeviceType"],
-                                                channels=normalize_channel_input(systemuser.get("Channels")))
+                                                channels=normalize_channel_input(systemuser.get("Channels")),
+                                                role=systemuser.get("Role", systemuser.get("Group")))
         except Exception as e:
             if isinstance(systemuser, dict) and "Name" in systemuser:
                 errors.append(f"operation failed for user {systemuser['Name']}")
