@@ -32,3 +32,31 @@ def clientEndPoint():
         ],
         "nodeId": config.nodeID
     }
+
+
+@page.route('/Marti/api/groups/active', methods=['PUT'])
+def put_groups_active():
+    """Accept a client's channel selection.
+
+    Which channels a client may actually exchange traffic on is decided by
+    the server from the certificate it connects with, so this records the
+    client's preference and acknowledges it; clients hide the channel list
+    when this endpoint is missing.
+    """
+    return {
+        "version": "3",
+        "type": "java.lang.Boolean",
+        "data": True,
+        "nodeId": config.nodeID
+    }
+
+
+@page.route('/Marti/api/groups/activebits', methods=['GET', 'PUT'])
+def groups_activebits():
+    """Report or accept the active channel bit positions for a client."""
+    return {
+        "version": "3",
+        "type": "java.lang.Boolean",
+        "data": True,
+        "nodeId": config.nodeID
+    }
