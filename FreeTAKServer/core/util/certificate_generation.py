@@ -1,5 +1,10 @@
 # !/usr/bin/python
-from OpenSSL import crypto
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import NameOID
+from datetime import datetime, timedelta, timezone
 import os
 import getopt
 import sys
@@ -20,15 +25,60 @@ import hashlib
 # Make a connection to the MainConfig object for all routines below
 config = MainConfig.instance()
 
-def _utc_time_from_datetime(date):
-    fmt = '%y%m%d%H%M'
-    if date.second > 0:
-        fmt += '%S'
-    if date.tzinfo is None:
-        fmt += 'Z'
-    else:
-        fmt += '%z'
-    return date.strftime(fmt)
+def _fts_x509_name(common_name: str) -> x509.Name:
+    """The subject/issuer name FTS has always stamped on its certificates."""
+    return x509.Name([
+        x509.NameAttribute(NameOID.COMMON_NAME, common_name),
+        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Nova Scotia"),
+        x509.NameAttribute(NameOID.COUNTRY_NAME, "CA"),
+        x509.NameAttribute(NameOID.ORGANIZATION_NAME, "FreeTAKServer"),
+        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "Core Dev"),
+        x509.NameAttribute(NameOID.LOCALITY_NAME, "Halifax"),
+    ])
+
+
+def _p12_encryption(password: bytes):
+    # TAK clients (ATAK/iTAK/WinTAK) expect the legacy PKCS12 encryption that
+    # OpenSSL 1.1.x produced (SHA1 + 3DES); modern AES-256 defaults are not
+    # accepted by all client versions, so keep emitting the legacy format.
+    return (
+        serialization.PrivateFormat.PKCS12.encryption_builder()
+        .kdf_rounds(50000)
+        .key_cert_algorithm(pkcs12.PBES.PBESv1SHA1And3KeyTripleDESCBC)
+        .hmac_hash(hashes.SHA1())
+        .build(password)
+    )
+
+
+def _sign_crl(revoked_certs, ca_cert, ca_private_key):
+    """Build and sign a CRL containing the given revoked certificates."""
+    now = datetime.now(timezone.utc)
+    builder = (
+        x509.CertificateRevocationListBuilder()
+        .issuer_name(ca_cert.subject)
+        .last_update(now)
+        .next_update(now + timedelta(days=100))
+    )
+    for revoked in revoked_certs:
+        builder = builder.add_revoked_certificate(revoked)
+    return builder.sign(private_key=ca_private_key, algorithm=hashes.SHA256())
+
+
+def _replace_crl_in_pem(pem_path, crl_pem_bytes):
+    """Strip any CRL block from the end of a PEM file and append a new one."""
+    delete = 0
+    with open(pem_path, "r") as f:
+        lines = f.readlines()
+    with open(pem_path, "w") as f:
+        for line in lines:
+            if delete:
+                continue
+            elif line.strip("\n") != "-----BEGIN X509 CRL-----":
+                f.write(line)
+            else:
+                delete = 1
+    with open(pem_path, "ab") as f:
+        f.write(crl_pem_bytes)
 
 
 def revoke_certificate(username, revoked_file=None, ca_pem = config.CA, ca_key = config.CAkey, crl_file = config.CRLFile, user_cert_dir=config.certsPath, crl_path=config.CRLFile):
@@ -46,55 +96,45 @@ def revoke_certificate(username, revoked_file=None, ca_pem = config.CA, ca_key =
 
     import os
     import json
-    from OpenSSL import crypto
-    from datetime import datetime
 
     data = {}
-    certificate = crypto.load_certificate(crypto.FILETYPE_PEM, open(ca_pem, mode="rb").read())
-    private_key = crypto.load_privatekey(crypto.FILETYPE_PEM, open(ca_key, mode="r").read())
+    certificate = x509.load_pem_x509_certificate(open(ca_pem, mode="rb").read())
+    private_key = serialization.load_pem_private_key(
+        open(ca_key, mode="rb").read(), password=None
+    )
+    existing_revocations = []
     if crl_path and os.path.exists(crl_path):
-        crl = crypto.load_crl(crypto.FILETYPE_PEM, open(crl_path, mode="rb").read())
-    else:
-        crl = crypto.CRL()
-        if revoked_file and os.path.exists(revoked_file):
-            with open(revoked_file, 'r') as json_file:
-                data = json.load(json_file)
+        existing_crl = x509.load_pem_x509_crl(open(crl_path, mode="rb").read())
+        existing_revocations = list(existing_crl)
+    elif revoked_file and os.path.exists(revoked_file):
+        with open(revoked_file, 'r') as json_file:
+            data = json.load(json_file)
 
     for cert in os.listdir(user_cert_dir):
         if cert.lower() == f"{username.lower()}.pem":
             with open(config.certsPath+'/'+cert, 'rb') as cert:
-                revoked_cert = crypto.load_certificate(crypto.FILETYPE_PEM, cert.read())
-            data[str(revoked_cert.get_serial_number())] = username
+                revoked_cert = x509.load_pem_x509_certificate(cert.read())
+            data[str(revoked_cert.serial_number)] = username
             break
 
-    for key in data:
-        revoked_time = _utc_time_from_datetime(datetime.utcnow())
-        revoked = crypto.Revoked()
-        revoked.set_serial(format(int(key), "02x").encode())
-        revoked.set_rev_date(bytes(revoked_time, encoding='utf8'))
-        crl.add_revoked(revoked)
-    crl.sign(certificate, private_key, b"sha256")
+    now = datetime.now(timezone.utc)
+    new_revocations = [
+        x509.RevokedCertificateBuilder()
+        .serial_number(int(key))
+        .revocation_date(now)
+        .build()
+        for key in data
+    ]
+    crl = _sign_crl(existing_revocations + new_revocations, certificate, private_key)
     if revoked_file:
         with open(revoked_file, 'w+') as json_file:
             json.dump(data, json_file)
 
+    crl_pem = crl.public_bytes(serialization.Encoding.PEM)
     with open(crl_file, 'wb') as f:
-        f.write(crl.export(cert=certificate, key=private_key, digest=b"sha256"))
+        f.write(crl_pem)
 
-    delete = 0
-    with open(ca_pem, "r") as f:
-        lines = f.readlines()
-    with open(ca_pem, "w") as f:
-        for line in lines:
-            if delete:
-                continue
-            elif line.strip("\n") != "-----BEGIN X509 CRL-----":
-                f.write(line)
-            else:
-                delete = 1
-
-    with open(ca_pem, "ab") as f:
-        f.write(crl.export(cert=certificate, key=private_key, digest=b"sha256"))
+    _replace_crl_in_pem(ca_pem, crl_pem)
 
 
 def send_data_package(server: str, dp_name: str = "user.zip") -> bool:
@@ -324,7 +364,7 @@ class AtakOfTheCerts:
         """
         :param pwd: String based password used to secure the p12 files generated, defaults to MainConfig.password
         """
-        self.key = crypto.PKey()
+        self.key = None
         self.CERTPWD = pwd
         self.cakeypath = config.CAkey
         self.capempath = config.CA
@@ -350,59 +390,48 @@ class AtakOfTheCerts:
             os.makedirs(config.certsPath)
         serial_number = random.getrandbits(64)
 
-        ca_key = crypto.PKey()
-        ca_key.generate_key(crypto.TYPE_RSA, 2048)
-        cert = crypto.X509()
-        cn = random.getrandbits(64)
-        cert.get_subject().CN = str(cn)
-        cert.get_subject().ST = "Nova Scotia"
-        cert.get_subject().C = "CA"
-        cert.get_subject().O = "FreeTAKServer"
-        cert.get_subject().OU = "Core Dev"
-        cert.get_subject().L = "Halifax"
-        cert.set_serial_number(serial_number)
-        cert.set_version(2)
+        ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        name = _fts_x509_name(str(random.getrandbits(64)))
+        now = datetime.now(timezone.utc)
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(name)
+            .issuer_name(name)
+            .serial_number(serial_number)
+            .not_valid_before(now)
+            .not_valid_after(now + timedelta(seconds=expiry_time_secs))
+            .public_key(ca_key.public_key())
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=False)
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=False, content_commitment=False,
+                    key_encipherment=False, data_encipherment=False,
+                    key_agreement=False, key_cert_sign=True, crl_sign=True,
+                    encipher_only=False, decipher_only=False,
+                ),
+                critical=False,
+            )
+            .sign(ca_key, hashes.SHA256())
+        )
 
-        cert.gmtime_adj_notBefore(0)
-        cert.gmtime_adj_notAfter(expiry_time_secs)
-        cert.set_issuer(cert.get_subject())
-        cert.add_extensions([
-                                crypto.X509Extension(b'basicConstraints', False, b'CA:TRUE'),
-                                crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign')
-                            ])
-        
-        cert.set_pubkey(ca_key)
-        cert.sign(ca_key, "sha256")
+        with open(self.cakeypath, "wb") as f:
+            f.write(ca_key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.TraditionalOpenSSL,
+                serialization.NoEncryption(),
+            ))
 
-        f = open(self.cakeypath, "wb")
-        f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, ca_key))
-        f.close()
-
-        f = open(self.capempath, "wb")
-        f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
-        f.close()
+        with open(self.capempath, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
 
         # append empty crl
-        crl = crypto.CRL()
-        crl.sign(cert, ca_key, b"sha256")
+        crl = _sign_crl([], cert, ca_key)
+        crl_pem = crl.public_bytes(serialization.Encoding.PEM)
 
         with open(config.CRLFile, 'wb') as f:
-            f.write(crl.export(cert=cert, key=ca_key, digest=b"sha256"))
+            f.write(crl_pem)
 
-        delete = 0
-        with open(self.capempath, "r") as f:
-            lines = f.readlines()
-        with open(self.capempath, "w") as f:
-            for line in lines:
-                if delete:
-                    continue
-                elif line.strip("\n") != "-----BEGIN X509 CRL-----":
-                    f.write(line)
-                else:
-                    delete = 1
-
-        with open(self.capempath, "ab") as f:
-            f.write(crl.export(cert=cert, key=ca_key, digest=b"sha256"))
+        _replace_crl_in_pem(self.capempath, crl_pem)
 
     def _generate_key(self, keypath: str) -> None:
         """
@@ -411,12 +440,19 @@ class AtakOfTheCerts:
         """
         if os.path.exists(keypath):
             print("Certificate file exists, aborting.")
+            # load the existing key so a subsequent _generate_certificate call
+            # signs a certificate matching the key already on disk
+            with open(keypath, "rb") as f:
+                self.key = serialization.load_pem_private_key(f.read(), password=None)
         else:
             print("Generating Key...")
-            self.key.generate_key(crypto.TYPE_RSA, 2048)
-            f = open(keypath, "wb")
-            f.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, self.key))
-            f.close()
+            self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            with open(keypath, "wb") as f:
+                f.write(self.key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.TraditionalOpenSSL,
+                    serialization.NoEncryption(),
+                ))
 
     def _generate_certificate(self, common_name: str, p12path: str, pempath: str = config.pemDir,
                               expiry_time_secs: int = 31536000) -> None:
@@ -428,38 +464,36 @@ class AtakOfTheCerts:
         :param expiry_time_secs: length of time in seconds that the certificate is valid for, defaults to 1 year
         """
         if not os.path.exists(pempath):
-            ca_key = crypto.load_privatekey(crypto.FILETYPE_PEM, open(self.cakeypath).read())
-            ca_pem = crypto.load_certificate(crypto.FILETYPE_PEM, open(self.capempath, 'rb').read())
+            ca_key = serialization.load_pem_private_key(
+                open(self.cakeypath, "rb").read(), password=None
+            )
+            ca_pem = x509.load_pem_x509_certificate(open(self.capempath, 'rb').read())
             serial_number = random.getrandbits(64)
-            chain = (ca_pem,)
-            cert = crypto.X509()
-            cert.get_subject().CN = common_name
-            cert.get_subject().ST = "Nova Scotia"
-            cert.get_subject().C = "CA"
-            cert.get_subject().O = "FreeTAKServer"
-            cert.get_subject().OU = "Core Dev"
-            cert.get_subject().L = "Halifax"
-            cert.set_serial_number(serial_number)
-            cert.gmtime_adj_notBefore(0)
-            cert.gmtime_adj_notAfter(expiry_time_secs)
-            cert.set_issuer(ca_pem.get_subject())
-            cert.set_pubkey(self.key)
-            cert.set_version(2)
-            cert.sign(ca_key, "sha256")
-            p12 = crypto.PKCS12()
-            p12.set_privatekey(self.key)
-            p12.set_certificate(cert)
-            p12.set_ca_certificates(tuple(chain))
-            p12data = p12.export(passphrase=bytes(self.CERTPWD, encoding='UTF-8'))
+            now = datetime.now(timezone.utc)
+            cert = (
+                x509.CertificateBuilder()
+                .subject_name(_fts_x509_name(common_name))
+                .issuer_name(ca_pem.subject)
+                .serial_number(serial_number)
+                .not_valid_before(now)
+                .not_valid_after(now + timedelta(seconds=expiry_time_secs))
+                .public_key(self.key.public_key())
+                .sign(ca_key, hashes.SHA256())
+            )
+            p12data = pkcs12.serialize_key_and_certificates(
+                name=common_name.encode("UTF-8"),
+                key=self.key,
+                cert=cert,
+                cas=[ca_pem],
+                encryption_algorithm=_p12_encryption(
+                    bytes(self.CERTPWD, encoding='UTF-8')
+                ),
+            )
             with open(p12path, 'wb') as p12file:
                 p12file.write(p12data)
 
-            if os.path.exists(pempath):
-                print("Certificate File Exists, aborting.")
-            else:
-                f = open(pempath, "wb")
-                f.write(crypto.dump_certificate(crypto.FILETYPE_PEM, cert))
-                f.close()
+            with open(pempath, "wb") as f:
+                f.write(cert.public_bytes(serialization.Encoding.PEM))
         else:
             pass
     def bake(self, common_name: str, cert: str = "user", expiry_time_secs: int = 31536000) -> None:

@@ -2,7 +2,6 @@ from FreeTAKServer.core.connection.MainSocketController import MainSocketControl
 from FreeTAKServer.model.sockets.SSLServerSocket import SSLServerSocket
 import ssl
 import socket
-import OpenSSL
 
 
 class SSLSocketController(MainSocketController):
