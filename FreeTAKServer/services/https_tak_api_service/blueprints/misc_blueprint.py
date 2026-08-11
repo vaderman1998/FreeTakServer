@@ -7,10 +7,12 @@ page = Blueprint('misc', __name__)
 
 @page.route("/Marti/api/groups/groupCacheEnabled")
 def group_cache():
+    # advertises that this server serves channels: clients skip loading the
+    # channel list entirely when this is false
     return {
         "version": "3",
         "type": "java.lang.Boolean",
-        "data": False,
+        "data": True,
         "nodeId": config.nodeID
     }
 
