@@ -207,12 +207,20 @@ def show_service_info(empty=None):
     emit('serviceInfoUpdate', json.dumps(jsonObject))
 
 
+# CommandPipe is a single request/response channel shared by every caller.
+# Without serialization, concurrent callers (the dashboard requests service
+# info, system status and server health at once) each put a request and then
+# race to read replies, so one steals another's response and both fail.
+_command_pipe_lock = threading.Lock()
+
+
 def getStatus():
-    CommandPipe.put([functionNames.checkStatus])
-    out = CommandPipe.get()
-    while hasattr(out, "CoTService") == False:
+    with _command_pipe_lock:
+        CommandPipe.put([functionNames.checkStatus])
         out = CommandPipe.get()
-    return out
+        while hasattr(out, "CoTService") == False:
+            out = CommandPipe.get()
+        return out
 
 
 @socketio.on("serverHealth")
@@ -1288,8 +1296,9 @@ def URLGET():
 def Clients():
     try:
         if request.remote_addr in config.AllowCLIIPs:
-            CommandPipe.put([functionNames.Clients])
-            out = CommandPipe.get()
+            with _command_pipe_lock:
+                CommandPipe.put([functionNames.Clients])
+                out = CommandPipe.get()
             returnValue = []
             for client in out:
                 returnValue.append(ApplyFullJsonController().serialize_model_to_json(client))
@@ -1503,8 +1512,7 @@ def check_status():
     try:
 
         if request.remote_addr in config.AllowCLIIPs:
-            CommandPipe.put([functionNames.checkStatus])
-            FTSServerStatusObject = CommandPipe.get()
+            FTSServerStatusObject = getStatus()
             out = ApplyFullJsonController().serialize_model_to_json(FTSServerStatusObject)
             return json.dumps(out), 200
         else:
