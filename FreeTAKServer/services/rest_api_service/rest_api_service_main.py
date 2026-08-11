@@ -57,7 +57,7 @@ from FreeTAKServer.core.parsers.JsonController import JsonController
 from FreeTAKServer.core.serializers.SqlAlchemyObjectController import SqlAlchemyObjectController
 from FreeTAKServer.components.extended.excheck.controllers.ExCheckController import ExCheckController
 from .views.connections_view_controller import ManageConnections
-from .controllers.authentication import auth
+from .controllers.authentication import auth, ADMIN_ROLE, role_for_group
 
 app = Flask(__name__)
 login_manager = LoginManager()
@@ -258,7 +258,7 @@ def systemUsers(empty=None):
     emit('systemUsersUpdate', json.dumps(jsondata))
 
 @app.route('/ManageSystemUser/getAll', methods=["GET"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def getSystemUsersRest():
     """ wrapper around the updateSystemUser function for Rest API
     """
@@ -293,7 +293,7 @@ def systemUsers(empty=None):
     emit('systemUsersUpdate', json.dumps(jsondata))
 
 @app.route('/ManageSystemUser/getSystemUser', methods=["GET"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def getSystemUserRest():
     """ wrapper around the updateSystemUser function for Rest API
     """
@@ -332,7 +332,7 @@ def updateSystemUserWebsocket(jsondata):
         return "An error occured attempting to update user.", 500
 
 @app.route('/ManageSystemUser/putSystemUser', methods=["PUT"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def updateSystemUserRest():
     """ wrapper around the updateSystemUser function for Rest API
     """
@@ -377,7 +377,7 @@ def addSystemUserWebsocket(jsondata):
         return {"message": "An error occured attempting to add user(s) to the system."}, 500
 '''
 @app.route('/ManageSystemUser/postSystemUser', methods=["POST"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def addSystemUserRest():
     """ wrapper around the addSystemUser function for Rest API
     """
@@ -488,7 +488,7 @@ def removeSystemUserWebsocket(jsondata):
         return {"message":"An error occured attempting to remove the user(s)."}, 500
 
 @app.route('/ManageSystemUser/deleteSystemUser', methods=["DELETE"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def removeSystemUserRest():
     """ wrapper around the removeSystemUser function for Rest API
     """
@@ -623,7 +623,7 @@ class Notification:
 
 
 @app.route("/SendGeoChat", methods=[restMethods.POST])
-@auth.login_required()
+@auth.login_required(role=ADMIN_ROLE)
 def SendGeoChat():
     try:
         json = request.json
@@ -648,7 +648,7 @@ def ManagePresence():
 
 
 @app.route("/ManagePresence/postPresence", methods=[restMethods.POST])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def postPresence():
     try:
         from json import dumps
@@ -664,7 +664,7 @@ def postPresence():
 
 
 @app.route("/ManagePresence/putPresence", methods=["PUT"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def putPresence():
     try:
         from json import dumps
@@ -686,7 +686,7 @@ def ManageRoute():
 
 
 @app.route("/ManageRoute/postRoute", methods=["POST"])
-@auth.login_required()
+@auth.login_required(role=ADMIN_ROLE)
 def postRoute():
     try:
         from json import dumps
@@ -958,7 +958,7 @@ def postGeoObject():
 
 
 @app.route("/ManageGeoObject/putGeoObject", methods=["PUT"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def putGeoObject():
     try:
         from json import dumps
@@ -1019,7 +1019,7 @@ def getVideoStream():
 
 
 @app.route("/ManageVideoStream/deleteVideoStream", methods=[restMethods.DELETE])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def deleteVideoStream():
     try:
         from json import dumps
@@ -1034,7 +1034,7 @@ def deleteVideoStream():
 
 
 @app.route("/ManageVideoStream/postVideoStream", methods=["POST"])
-@auth.login_required()
+@auth.login_required(role=ADMIN_ROLE)
 def postVideoStream():
     """this method contains the logic for the endpoints which saves the contents of a new videostream to
     the db and sends a CoT to all connected clients containing stream information."""
@@ -1088,7 +1088,7 @@ def ManageChat():
 
 
 @app.route("/ManageChat/postChatToAll", methods=[restMethods.POST])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def postChatToAll():
     try:
         from json import dumps
@@ -1108,7 +1108,7 @@ def sensor():
 
 
 @app.route("/Sensor/postDrone", methods=["POST"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def postDroneSensor():
     try:
         from json import dumps
@@ -1136,7 +1136,7 @@ def postDroneSensor():
 
 
 @app.route("/Sensor/postSPI", methods=["POST"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def postSPI():
     try:
         from json import dumps
@@ -1152,7 +1152,7 @@ def postSPI():
 
 
 @app.route("/MapVid", methods=["POST"])
-@auth.login_required
+@auth.login_required(role=ADMIN_ROLE)
 def mapvid():
     from json import dumps
     jsondata = request.get_json(force=True)
@@ -1192,7 +1192,11 @@ def authenticate_user():
             del (json_user["_modified_event"])
             del (json_user["_decl_class_registry"])
             print('done defining dict')
-            return_data = json.dumps({"uid": json_user["uid"]})
+            return_data = json.dumps({
+                "uid": json_user["uid"],
+                "group": json_user.get("group"),
+                "role": role_for_group(json_user.get("group")),
+            })
             print('returning data ' + str(return_data))
             return return_data, 200
         else:
@@ -1287,7 +1291,7 @@ def Clients():
 
 
 @app.route('/FederationTable', methods=[restMethods.GET, restMethods.POST, "PUT", restMethods.DELETE])
-@auth.login_required()
+@auth.login_required(role=ADMIN_ROLE)
 def FederationTable():
     try:
         from .controllers.persistency import dbController
@@ -1360,7 +1364,7 @@ def FederationTable():
 
 
 @app.route('/ManageKML/postKML', methods=[restMethods.POST])
-@auth.login_required()
+@auth.login_required(role=ADMIN_ROLE)
 def create_kml():
     # Make a connection to the MainConfig object
     config = MainConfig.instance()
@@ -1457,7 +1461,7 @@ def create_kml():
 
 
 @app.route('/BroadcastDataPackage', methods=[restMethods.POST])
-@auth.login_required()
+@auth.login_required(role=ADMIN_ROLE)
 def broadcast_datapackage(uid):
     import datetime as dt
     DATETIME_FMT = "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -1645,6 +1649,12 @@ def api_routing(context, action):
     Returns:
         dict: the values of the response returned by the component
     """
+    # this route proxies arbitrary component actions, so anything that can
+    # change state (POST) requires admin; GET stays available to any
+    # authenticated user
+    if request.method == restMethods.POST and ADMIN_ROLE not in auth.get_user_roles(auth.current_user()):
+        return {"message": "administrator access required"}, 403
+
     synchronous = request.args.get("synchronous", True) # all requests are by default synchronous
     service_id = request.args.get("service_id")
     values = request.get_json()

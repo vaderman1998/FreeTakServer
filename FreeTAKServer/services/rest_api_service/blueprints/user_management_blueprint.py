@@ -7,7 +7,7 @@ import qrcode
 
 from FreeTAKServer.core.RestMessageControllers.RestEnumerations import RestEnumerations
 from FreeTAKServer.core.util import certificate_generation
-from ..controllers.authentication import auth
+from ..controllers.authentication import auth, ADMIN_ROLE
 from geopy import Point, distance, Nominatim
 import datetime as dt
 
@@ -23,6 +23,7 @@ config = MainConfig.instance()
 page = Blueprint('user_management', __name__)
 
 @page.route('/GenerateQR', methods=['GET'])
+@auth.login_required
 def generate_qr():
     datapackage_hash = request.args.get('datapackage_hash')
     resp = RestAPICommunicationController().make_request("GetEnterpriseSyncMetaData", "", {"objecthash": datapackage_hash})
@@ -40,6 +41,7 @@ def generate_qr():
     return send_file(img_io, mimetype='image/jpeg')
 
 @page.route('/ManageSystemUser/postSystemUser', methods=['POST'])
+@auth.login_required(role=ADMIN_ROLE)
 def post_system_user():
     from ..controllers.persistency import dbController
     errors = []
