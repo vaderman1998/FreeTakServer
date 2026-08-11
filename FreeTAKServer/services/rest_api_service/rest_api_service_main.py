@@ -58,7 +58,7 @@ from FreeTAKServer.core.serializers.SqlAlchemyObjectController import SqlAlchemy
 from FreeTAKServer.components.extended.excheck.controllers.ExCheckController import ExCheckController
 from .views.connections_view_controller import ManageConnections
 from .controllers.authentication import auth, ADMIN_ROLE, role_for_user
-from FreeTAKServer.core.configuration.ChannelConstants import normalize_channel_input
+from FreeTAKServer.core.configuration.ChannelConstants import normalize_channel_input, parse_channels
 
 app = Flask(__name__)
 login_manager = LoginManager()
@@ -1505,6 +1505,110 @@ def broadcast_datapackage(uid):
     cot.xmlString = clientXML.encode()
     newCoT = SendOtherController(cot, addToDB=False)
     APIPipe.put(newCoT.getObject())
+
+@app.route('/ManageChannel/getAll', methods=[restMethods.GET])
+@auth.login_required(role=ADMIN_ROLE)
+def get_channels_rest():
+    """list the channels CoT traffic can be confined to"""
+    try:
+        return json.dumps({"Channels": get_channels()}), 200
+    except Exception as e:
+        logger.error(str(e))
+        return {"message": "An error occurred retrieving channels."}, 500
+
+
+@app.route('/ManageChannel/postChannel', methods=[restMethods.POST])
+@auth.login_required(role=ADMIN_ROLE)
+def post_channel_rest():
+    """create a channel"""
+    try:
+        return add_channels(request.get_json())
+    except Exception as e:
+        logger.error(str(e))
+        return {"message": "An error occurred creating the channel."}, 500
+
+
+@app.route('/ManageChannel/deleteChannel', methods=[restMethods.DELETE])
+@auth.login_required(role=ADMIN_ROLE)
+def delete_channel_rest():
+    """delete a channel and remove it from every user's membership"""
+    try:
+        return remove_channels(request.get_json())
+    except Exception as e:
+        logger.error(str(e))
+        return {"message": "An error occurred deleting the channel."}, 500
+
+
+def get_channels():
+    from .controllers.persistency import dbController
+
+    return [
+        {"Name": channel.name, "Description": channel.description,
+         "Members": [user.name for user in dbController.query_systemUser()
+                     if channel.name in parse_channels(user.channels)]}
+        for channel in dbController.query_channel()
+    ]
+
+
+def add_channels(jsondata):
+    from .controllers.persistency import dbController
+
+    created = []
+    for channel in jsondata.get("channels", []):
+        name = str(channel.get("Name", "")).strip()
+        if not name:
+            continue
+        if dbController.query_channel(query=f'name = "{name}"'):
+            continue
+        dbController.create_channel(uid=str(uuid.uuid4()), name=name,
+                                    description=channel.get("Description"))
+        created.append(name)
+    return {"message": f"created {', '.join(created)}" if created else "no channels created"}, 201
+
+
+def remove_channels(jsondata):
+    from .controllers.persistency import dbController
+
+    for channel in jsondata.get("channels", []):
+        name = str(channel.get("Name", "")).strip()
+        if not name:
+            continue
+        dbController.remove_channel(query=f'name = "{name}"')
+        # drop the channel from anyone who was a member of it
+        for user in dbController.query_systemUser():
+            members = parse_channels(user.channels)
+            if name in members and user.channels:
+                remaining = [item for item in members if item != name]
+                dbController.update_systemUser(
+                    query=f'uid = "{user.uid}"',
+                    column_value={"channels": ",".join(remaining) or None},
+                )
+    return {"message": "channels removed"}, 200
+
+
+@socketio.on('channels')
+@socket_auth(session=session)
+def channels_websocket(empty=None):
+    emit('channelsUpdate', json.dumps({"Channels": get_channels()}))
+
+
+@socketio.on('addChannel')
+@socket_auth(session=session)
+def add_channel_websocket(jsondata):
+    try:
+        add_channels(json.loads(jsondata))
+    except Exception as e:
+        logger.error(str(e))
+
+
+@socketio.on('removeChannel')
+@socket_auth(session=session)
+def remove_channel_websocket(jsondata):
+    try:
+        remove_channels(json.loads(jsondata))
+    except Exception as e:
+        logger.error(str(e))
+
 
 @app.route('/checkStatus', methods=[restMethods.GET])
 @auth.login_required()

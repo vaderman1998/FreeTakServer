@@ -1,5 +1,6 @@
 import FreeTAKServer.core.persistence.table_controllers
 from FreeTAKServer.core.persistence import system_user_table_controller
+from FreeTAKServer.core.persistence import channel_table_controller
 from FreeTAKServer.core.persistence import VideoStreamTableController
 from FreeTAKServer.core.persistence import EventTableController
 from FreeTAKServer.core.persistence import DataPackageTableController
@@ -62,6 +63,7 @@ class DatabaseController:
         self.DataPackageController = DataPackageTableController.DataPackageTableController()
         self.UserTableController = UserTableController.UserTableController()
         self.SystemUserTableController = system_user_table_controller.SystemUserTableController()
+        self.ChannelTableController = channel_table_controller.ChannelTableController()
         self.VideoStreamTableController = VideoStreamTableController.VideoStreamTableController()
         self._VideoTableController = _VideoTableController._VideoTableController()
         self.EventTableController = EventTableController.EventTableController()
@@ -247,6 +249,15 @@ class DatabaseController:
             self.session.rollback()
             self.session.commit()
             raise Exception(e)
+    def create_channel(self, **args):
+        return self._create(controller=self.ChannelTableController, **args)
+
+    def query_channel(self, query="1=1", columns=['*']):
+        return self._query(controller=self.ChannelTableController, query=query, columns=columns)
+
+    def remove_channel(self, query="1=1"):
+        return self._remove(controller=self.ChannelTableController, query=query)
+
     def remove_systemUser(self, query="1=1"):
         return self._remove(controller=self.SystemUserTableController, query=query)
 
