@@ -46,7 +46,6 @@ setup(
         "lxml",
         "MarkupSafe==2.1.5",
         "monotonic==1.6",
-        "pathlib2==2.3.7.post1",
         "protobuf==3.18.3",
         "psutil==5.9.4",
         "pykml==0.2.0",
@@ -63,11 +62,14 @@ setup(
         "pyOpenSSL==22.0.0",
         "qrcode==7.3.1",
         "pillow==9.3.0",
-        "asyncio==3.4.3",
         "xmltodict",
         "pyzmq",
         "digitalpy>=0.3.13.7",
-        "opentelemetry-sdk",
+        # <1.34.1: BatchSpanProcessor.span_exporter became a read-only property in
+        # 1.35 (backported to 1.34.1), which breaks digitalpy's TracerProcessor
+        # configuration (crashes CoT services at startup)
+        "opentelemetry-sdk>=1.20,<1.34.1",
+        "requests>=2.28",
         "PyJWT"
     ],
     extras_require={
