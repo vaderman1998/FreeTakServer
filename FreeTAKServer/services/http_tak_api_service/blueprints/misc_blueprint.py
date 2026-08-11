@@ -60,3 +60,50 @@ def groups_activebits():
         "data": True,
         "nodeId": config.nodeID
     }
+
+
+@page.route('/Marti/api/groups/activeForce')
+def groups_active_force():
+    """Report the forced channel selection for a user; none is forced here."""
+    return {
+        "name": "",
+        "distinguishedName": "",
+        "direction": "",
+        "created": "",
+        "bitpos": 0,
+        "active": True,
+        "description": "",
+        "type": "SYSTEM",
+    }
+
+
+@page.route('/Marti/api/groups/user')
+def groups_for_user():
+    return {
+        "version": "3",
+        "type": "com.bbn.marti.remote.groups.Group",
+        "data": {},
+        "messages": [""],
+        "nodeId": config.nodeID
+    }
+
+
+@page.route('/Marti/api/groupprefix')
+def groups_prefix():
+    return {
+        "version": "3",
+        "type": "java.lang.String",
+        "data": "",
+        "nodeId": config.nodeID
+    }
+
+
+@page.route('/Marti/api/subscriptions/all')
+def subscriptions_all():
+    return {
+        "version": "3",
+        "type": "SubscriptionInfo",
+        "data": [],
+        "messages": [],
+        "nodeId": config.nodeID
+    }

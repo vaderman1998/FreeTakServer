@@ -48,6 +48,7 @@ def get_groups():
                 "type": "SYSTEM",
                 "bitpos": index + 3,
                 "active": True,
+                "description": channel.description or "",
             })
 
     # the anonymous group is what clients fall back to, and is the only group
@@ -60,6 +61,7 @@ def get_groups():
             "type": "SYSTEM",
             "bitpos": 2,
             "active": True,
+            "description": "",
         })
 
     return {
