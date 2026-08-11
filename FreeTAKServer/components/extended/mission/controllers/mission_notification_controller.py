@@ -128,6 +128,12 @@ class MissionNotificationController(Controller):
         if mission_change_db.content_uid is not None:
             mission_change.contentUid.text = mission_change_db.content_uid
 
+        # the change carries no content resource, and the empty one the model
+        # builds serializes as a block of "None" values that clients cannot
+        # act on, so drop it and leave the uid as the item's only identifier
+        if mission_change_db.content_resource_uid is None:
+            mission_change.contentResource = None
+
         # Serializer called by service manager requires the message value
         self.response.set_value('message', [mission_content_notification])
 

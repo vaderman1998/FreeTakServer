@@ -70,8 +70,11 @@ class SendComponentDataController(Controller):
         for connection in connections.values():
             # component output is relayed to every connection, so channel
             # membership has to be enforced here as well as in the direct
-            # client to client path
-            if not channels_intersect(
+            # client to client path. No origin means the server produced the
+            # message itself, such as a mission notification, and those belong
+            # to every client: a client's own traffic always registers its uid
+            # as it arrives, so it never reaches here without an origin.
+            if origin_channels is not None and not channels_intersect(
                 origin_channels, parse_channels(getattr(connection, "channels", None))
             ):
                 continue
