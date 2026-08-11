@@ -4,6 +4,10 @@ from flask import Blueprint, request
 from FreeTAKServer.core.configuration.MainConfig import MainConfig
 from FreeTAKServer.services.http_tak_api_service.controllers.http_tak_api_communication_controller import HTTPTakApiCommunicationController
 
+from FreeTAKServer.core.configuration.LoggingConstants import LoggingConstants
+from FreeTAKServer.core.configuration.CreateLoggerController import CreateLoggerController
+logger = CreateLoggerController("FTS-Mission", logging_constants=LoggingConstants()).getLogger()
+
 page = Blueprint("mission", __name__)
 config = MainConfig.instance()
 
