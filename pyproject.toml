@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "FreeTAKServer"
-version = "2.4.0"
+version = "2.4.1"
 description = "An open source server for the TAK family of applications."
 authors = ["FreeTAKTeam <FreeTakTeam@gmail.com>"]
 readme = "README.md"
@@ -47,7 +47,9 @@ PyYAML="6.0.1"
 "ruamel.yaml"="0.17.21"
 "ruamel.yaml.clib"="0.2.8"
 six="1.16.0"
-SQLAlchemy="2.0.29"
+# ranged so the server stays co-installable with FreeTAKServer-UI, which
+# requires a newer SQLAlchemy than an exact pin here would allow
+SQLAlchemy=">=2.0.29,<3"
 tabulate="0.8.7"
 Werkzeug="3.0.1"
 WTForms="2.3.3"

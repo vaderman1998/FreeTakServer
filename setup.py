@@ -10,7 +10,7 @@ setup(
     packages=find_packages(
         include=["FreeTAKServer", "FreeTAKServer.*", "*.json", "*.ini", "*.conf"]
     ),
-    version="2.4.0",
+    version="2.4.1",
     license="EPL-2.0",
     description="An open source server for the TAK family of applications.",
     # long_description=long_description,
@@ -54,7 +54,7 @@ setup(
         "ruamel.yaml==0.17.21",
         "ruamel.yaml.clib==0.2.8",
         "six==1.16.0",
-        "SQLAlchemy==2.0.28",
+        "SQLAlchemy>=2.0.29,<3",
         "tabulate==0.8.7",
         "Werkzeug==3.0.1",
         "WTForms==2.3.3",
