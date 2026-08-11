@@ -22,13 +22,25 @@ from FreeTAKServer.core.configuration.CreateLoggerController import CreateLogger
 
 config = MainConfig.instance()
 page = Blueprint('user_management', __name__)
+logger = CreateLoggerController("FTS-QR", logging_constants=LoggingConstants()).getLogger()
 
 @page.route('/GenerateQR', methods=['GET'])
 @auth.login_required
 def generate_qr():
+    try:
+        return _generate_qr()
+    except Exception as ex:
+        logger.error("failed generating QR code: %s", ex, exc_info=True)
+        return {"message": "An error occurred generating the QR code."}, 500
+
+
+def _generate_qr():
     datapackage_hash = request.args.get('datapackage_hash')
     resp = RestAPICommunicationController().make_request("GetEnterpriseSyncMetaData", "", {"objecthash": datapackage_hash})
     dp = resp.get_value("objectmetadata")
+    if dp is None:
+        # an unknown hash is a bad request, not a server fault
+        return {"message": f"no data package found for hash {datapackage_hash}"}, 404
     qr = qrcode.QRCode(
         version=1,
         box_size=10,
