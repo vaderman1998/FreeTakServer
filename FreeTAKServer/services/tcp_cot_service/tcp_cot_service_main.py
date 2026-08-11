@@ -431,6 +431,23 @@ class TCPCoTServiceMain(DigitalPyService):
                 db_controller = DatabaseController()
                 self._channel_db_controller = db_controller
 
+            # the API writes memberships from another process; without ending
+            # the current transaction this session keeps reading its old
+            # snapshot and the change is never observed
+            try:
+                db_controller.session.rollback()
+                db_controller.session.expire_all()
+            except Exception:
+                pass
+
+            # connections are keyed by object id rather than by client uid, so
+            # index them by the uid their model object carries
+            connections_by_uid = {}
+            for connection in self.connections.values():
+                model_object = getattr(connection, "model_object", None)
+                if model_object is not None:
+                    connections_by_uid[getattr(model_object, "uid", None)] = connection
+
             for user_id, entry in list(self.client_information_queue.items()):
                 client_information = entry[1]
                 common_name = getattr(client_information, "common_name", None)
@@ -438,7 +455,7 @@ class TCPCoTServiceMain(DigitalPyService):
                     continue
                 channels = channels_for_common_name(common_name, db_controller, now)
                 client_information.channels = channels
-                connection = self.connections.get(str(user_id))
+                connection = connections_by_uid.get(user_id)
                 if connection is not None:
                     connection.channels = channels
         except Exception as ex:
