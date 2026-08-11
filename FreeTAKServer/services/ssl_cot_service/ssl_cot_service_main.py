@@ -1,3 +1,5 @@
+from FreeTAKServer.core.configuration.ChannelConstants import parse_channels
+import re
 from asyncio import Queue
 import threading
 import time
@@ -113,6 +115,9 @@ class SSLCoTServiceMain(DigitalPyService):
         self.ReceiveConnectionsProcessController = ReceiveConnectionsProcessController()
         self.dbController: DatabaseController
         self.send_component_data_controller = SendComponentDataController(self.logger)
+        # channels of the client each observed CoT uid originated from, used to
+        # confine component output to the originating client's channels
+        self.uid_channels = {}
         self.client_connection_controller = ClientConnectionController(
             self.logger,
             self.client_information_queue,
@@ -395,9 +400,42 @@ class SSLCoTServiceMain(DigitalPyService):
                     "single response exception traceback: %s", traceback.format_exc()
                 )
 
+    def record_origin_channels(self, data_object):
+        """Record the channels of the client a raw CoT message came from.
+
+        Clients emit CoT under uids other than their own (map markers,
+        drawings), so ownership is learned per uid as messages arrive rather
+        than assumed to match the connection uid.
+        """
+        client_information = getattr(data_object, "clientInformation", None)
+        if client_information is None:
+            return
+
+        # the reception handler reports the originating connection as its uid,
+        # so the authoritative client record is looked up in the queue; an
+        # object is also accepted in case a caller passes one directly
+        if isinstance(client_information, (str, bytes)):
+            key = client_information.decode() if isinstance(client_information, bytes) else client_information
+            entry = self.client_information_queue.get(key)
+            client_information = entry[1] if entry else None
+        if client_information is None:
+            return
+
+        channels = parse_channels(getattr(client_information, "channels", None))
+        message = data_object.xmlString
+        if isinstance(message, str):
+            message = message.encode()
+        match = re.search(rb'uid="([^"]+)"', message or b"")
+        if match:
+            self.uid_channels[match.group(1).decode(errors="replace")] = channels
+
+
     def send_component_message(self, request, message):
         self.send_component_data_controller.send_message(
-            self.connections, message, request.get_value("recipients")
+            self.connections,
+            message,
+            request.get_value("recipients"),
+            uid_channels=self.uid_channels,
         )
 
     def send_message(self, sender, message, use_share_pipe=True):
@@ -717,6 +755,10 @@ class SSLCoTServiceMain(DigitalPyService):
                     elif data_object.xmlString == b"":
                         self.handle_disconnection(data_object.clientInformation)
                         continue
+                    # remember which channels this CoT came from before it
+                    # enters the components, which do not carry the origin
+                    self.record_origin_channels(data_object)
+
                     # Process the raw CoT data and serialize it
                     self.component_handler(data_object.xmlString)
                     self.logger.debug(f"CoT serialized {data_object.xmlString}")

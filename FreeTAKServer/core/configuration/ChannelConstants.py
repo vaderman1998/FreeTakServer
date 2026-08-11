@@ -1,0 +1,60 @@
+"""Channel (group) membership rules for CoT traffic segregation.
+
+A channel confines CoT traffic to a set of clients: a message is only
+delivered to clients that share at least one channel with its sender.
+
+Membership is derived from the certificate a client presents to the SSL CoT
+service, which is verified against the server CA, so it cannot be chosen by
+the client. Clients on the plain TCP CoT service are not authenticated at
+all and are therefore confined to the public channel, where they can only
+exchange traffic with other public clients.
+"""
+
+# Channel every client belongs to when no other membership is known. Clients
+# whose only channel is this one behave exactly as they did before channels
+# existed, which keeps existing deployments working untouched.
+PUBLIC_CHANNEL = "public"
+
+
+def parse_channels(raw) -> list:
+    """Normalize a stored channel list into a list of channel names.
+
+    Accepts the comma separated string kept on SystemUser rows, an existing
+    iterable, or None. Always yields at least the public channel so that a
+    client is never isolated by a missing or malformed value.
+    """
+    if raw is None:
+        return [PUBLIC_CHANNEL]
+
+    if isinstance(raw, str):
+        names = [name.strip() for name in raw.split(",")]
+    else:
+        try:
+            names = [str(name).strip() for name in raw]
+        except TypeError:
+            return [PUBLIC_CHANNEL]
+
+    names = [name for name in names if name]
+    return names or [PUBLIC_CHANNEL]
+
+
+def channels_intersect(sender_channels, recipient_channels) -> bool:
+    """Whether a message from one channel set may be delivered to another."""
+    return bool(set(parse_channels(sender_channels)) & set(parse_channels(recipient_channels)))
+
+
+def normalize_channel_input(raw) -> str:
+    """Normalize channel input from the API into the stored representation.
+
+    Accepts a list of names or a comma separated string and returns the
+    canonical comma separated form, or None when the input names no channels
+    (meaning public only).
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        names = [name.strip() for name in raw.split(",")]
+    else:
+        names = [str(name).strip() for name in raw]
+    names = [name for name in names if name]
+    return ",".join(names) if names else None

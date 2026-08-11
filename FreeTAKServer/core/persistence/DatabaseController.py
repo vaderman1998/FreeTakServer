@@ -91,7 +91,42 @@ class DatabaseController:
                 return engine
             else:
                 Base.metadata.create_all(engine)
+                self.apply_schema_migrations(connection)
                 return engine
+
+    @staticmethod
+    def apply_schema_migrations(connection):
+        """Add columns introduced after a database was first created.
+
+        create_all() only creates missing tables, so columns added to an
+        existing table have to be applied explicitly for databases that
+        predate them.
+        """
+        from sqlalchemy import text
+
+        migrations = {
+            # channel membership for CoT traffic segregation
+            "SystemUser": [("channels", "VARCHAR(255)")],
+        }
+        for table, columns in migrations.items():
+            try:
+                existing = {
+                    row[1]
+                    for row in connection.execute(text(f"PRAGMA table_info({table})"))
+                }
+            except Exception:
+                # non-SQLite backends manage their own schema
+                continue
+            for name, ddl_type in columns:
+                if name in existing:
+                    continue
+                try:
+                    connection.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}")
+                    )
+                except Exception as ex:
+                    print(f"failed adding column {table}.{name}: {ex}")
+
     def create_Sessionmaker(self):
         SessionMaker = sessionmaker(bind=self.engine)
         return SessionMaker

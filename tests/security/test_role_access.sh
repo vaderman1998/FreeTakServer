@@ -3,8 +3,21 @@
 # blocked from admin actions at both the API and UI layers.
 S=$(mktemp -d)
 source /etc/fts/secrets.txt
-LIMITED_TOKEN=limitedtoken12345
-LIMITED_PASS=limitedpass123
+LIMITED_USER=roletest-limited
+LIMITED_TOKEN=roletest-limited-token
+LIMITED_PASS=roletest-limited-pass
+VENV=${VENV:-/root/FreeTakServer/.venv}
+
+# provision the read-only fixture user so the suite is self-contained
+"$VENV/bin/python" - "$LIMITED_USER" "$LIMITED_TOKEN" "$LIMITED_PASS" <<'PYFIX'
+import sys, uuid
+from FreeTAKServer.core.persistence.DatabaseController import DatabaseController
+name, token, password = sys.argv[1:4]
+db = DatabaseController()
+if not db.query_systemUser(query=f'name = "{name}"'):
+    db.create_systemUser(name=name, group="user", token=token, password=password,
+                         uid=str(uuid.uuid4()), device_type="mobile")
+PYFIX
 PASS=0
 FAIL=0
 
@@ -64,7 +77,7 @@ rm -f $S/c_ltd
 curl -s -c $S/c_ltd http://127.0.0.1:5000/login -o $S/l_ltd.html
 CSRF2=$(grep -oP 'name="csrf_token"[^>]*value="\K[^"]+' $S/l_ltd.html | head -1)
 curl -s -b $S/c_ltd -c $S/c_ltd -X POST http://127.0.0.1:5000/login \
-  -d "username=testuser&password=$LIMITED_PASS&csrf_token=$CSRF2&login=" -o /dev/null
+  -d "username=$LIMITED_USER&password=$LIMITED_PASS&csrf_token=$CSRF2&login=" -o /dev/null
 check "limited reaches dashboard" 200 "$(code -b $S/c_ltd http://127.0.0.1:5000/index)"
 check "limited BLOCKED from /users" 403 "$(code -b $S/c_ltd http://127.0.0.1:5000/users)"
 check "limited BLOCKED from /configure" 403 "$(code -b $S/c_ltd http://127.0.0.1:5000/configure)"

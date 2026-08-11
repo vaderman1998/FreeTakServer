@@ -1,3 +1,4 @@
+from FreeTAKServer.core.configuration.ChannelConstants import PUBLIC_CHANNEL
 # pylint: disable=trailing-whitespace
 #######################################################
 # 
@@ -21,8 +22,11 @@ class ClientInformation:
         self.IP = "" 
         self.receptionHandler = "" 
         self.sendData = "" 
-        self.socket = "" 
+        self.socket = ""
         self.type = "clientInformation"
+        # channels this client may exchange CoT on; resolved from its
+        # certificate at connection time, public only when unauthenticated
+        self.channels = [PUBLIC_CHANNEL]
 
     def __deepcopy__(self, memodict=dict):
         returned = ClientInformation()

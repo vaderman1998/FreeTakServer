@@ -58,6 +58,7 @@ from FreeTAKServer.core.serializers.SqlAlchemyObjectController import SqlAlchemy
 from FreeTAKServer.components.extended.excheck.controllers.ExCheckController import ExCheckController
 from .views.connections_view_controller import ManageConnections
 from .controllers.authentication import auth, ADMIN_ROLE, role_for_group
+from FreeTAKServer.core.configuration.ChannelConstants import normalize_channel_input
 
 app = Flask(__name__)
 login_manager = LoginManager()
@@ -276,6 +277,7 @@ def get_system_users():
         userjson = {}
         userjson['Name'] = user.name
         userjson["Group"] = user.group
+        userjson["Channels"] = user.channels
         userjson["Token"] = user.token
         userjson["Password"] = user.password
         userjson["Certs"] = user.certificate_package_name
@@ -311,6 +313,7 @@ def get_system_user(jsondata):
         userjson = {}
         userjson['Name'] = user.name
         userjson["Group"] = user.group
+        userjson["Channels"] = user.channels
         userjson["Token"] = user.token
         userjson["Password"] = user.password
         userjson["Certs"] = user.certificate_package_name
@@ -361,6 +364,8 @@ def updateSystemUser(jsondata):
             update_column["password"] = str(systemuser["Password"])
         if "Group" in systemuser:
             update_column["group"] = str(systemuser["Group"])
+        if "Channels" in systemuser:
+            update_column["channels"] = normalize_channel_input(systemuser["Channels"])
         dbController.update_systemUser(query=f'uid = "{systemuser["uid"]}"', column_value=update_column)
     get_system_users()
 

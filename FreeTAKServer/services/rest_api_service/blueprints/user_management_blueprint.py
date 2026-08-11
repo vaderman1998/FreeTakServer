@@ -8,6 +8,7 @@ import qrcode
 from FreeTAKServer.core.RestMessageControllers.RestEnumerations import RestEnumerations
 from FreeTAKServer.core.util import certificate_generation
 from ..controllers.authentication import auth, ADMIN_ROLE
+from FreeTAKServer.core.configuration.ChannelConstants import normalize_channel_input
 from geopy import Point, distance, Nominatim
 import datetime as dt
 
@@ -85,7 +86,8 @@ def post_system_user():
                 dbController.create_systemUser(name=systemuser["Name"], group=systemuser["Group"],
                                                 token=systemuser["Token"], password=systemuser["Password"],
                                                 uid=user_id,
-                                                certificate_package_name=cert_name + '.zip', device_type = systemuser["DeviceType"])
+                                                certificate_package_name=cert_name + '.zip', device_type = systemuser["DeviceType"],
+                                                channels=normalize_channel_input(systemuser.get("Channels")))
                 data = openfile.read()
                 RestAPICommunicationController().make_request("SaveEnterpriseSyncData", "enterpriseSync", {"file_name":cert_name + '.zip',"objecthash": file_hash, "objectdata": data, "objkeywords": [cert_name + '.zip', user_id, "missionpackage"], "mime_type": "application/zip", "tool": "public", "synctype": "content", "objectuid": file_hash, "length": len(data), "privacy": 1}, None, True)
                 
@@ -106,7 +108,8 @@ def post_system_user():
                 # in the event no certificate is to be generated simply create a system user
                 dbController.create_systemUser(name=systemuser["Name"], group=systemuser["Group"],
                                                 token=systemuser["Token"], password=systemuser["Password"],
-                                                uid=user_id, device_type = systemuser["DeviceType"])
+                                                uid=user_id, device_type = systemuser["DeviceType"],
+                                                channels=normalize_channel_input(systemuser.get("Channels")))
         except Exception as e:
             if isinstance(systemuser, dict) and "Name" in systemuser:
                 errors.append(f"operation failed for user {systemuser['Name']}")

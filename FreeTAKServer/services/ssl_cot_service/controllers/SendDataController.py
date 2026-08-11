@@ -1,6 +1,11 @@
 from typing import Dict
 from FreeTAKServer.core.configuration.LoggingConstants import LoggingConstants
 from FreeTAKServer.core.configuration.CreateLoggerController import CreateLoggerController
+from FreeTAKServer.core.configuration.ChannelConstants import (
+    PUBLIC_CHANNEL,
+    channels_intersect,
+    parse_channels,
+)
 from FreeTAKServer.model.RawCoT import RawCoT
 
 loggingConstants = LoggingConstants(log_name="FTS_SendDataController")
@@ -15,6 +20,32 @@ import copy
 class SendDataController:
     def __init__(self):
         pass
+
+    @staticmethod
+    def get_channels(participant) -> list:
+        """Channels of a connected client or of the sender of a message."""
+        return parse_channels(getattr(participant, "channels", None))
+
+    def sender_channels(self, sender, clientInformationQueue) -> list:
+        """Channels a message's sender is a member of.
+
+        Falls back to the queue entry for the sender's uid when the sender
+        object itself carries no membership, which is the case for messages
+        that reach this controller after a round trip through the components.
+        """
+        channels = getattr(sender, "channels", None)
+        if channels:
+            return parse_channels(channels)
+
+        user_id = getattr(sender, "user_id", None)
+        entry = clientInformationQueue.get(user_id) if user_id else None
+        if entry:
+            return self.get_channels(entry[1])
+        return [PUBLIC_CHANNEL]
+
+    def may_deliver(self, sender_channels, client) -> bool:
+        """Whether a message from these channels may reach this client."""
+        return channels_intersect(sender_channels, self.get_channels(client))
 
     def sendDataInQueue(
         self,
@@ -107,12 +138,16 @@ class SendDataController:
                 )
             else:
                 # print('marti present')
+                sender_channels = self.sender_channels(sender, clientInformationQueue)
                 for dest in dests:
                     try:
                         for client_id, client in clientInformationQueue.items():
                             if (
                                 client[1].m_presence.modelObject.detail.contact.callsign
                                 == dest
+                                # a named destination must still share a channel,
+                                # otherwise callsigns would cross channels
+                                and self.may_deliver(sender_channels, client[1])
                             ):
                                 sock = client[0]
                                 try:
@@ -153,12 +188,16 @@ class SendDataController:
 
     def send_to_all(self, clientInformationQueue, processedCoT, sender, shareDataPipe):
         try:
+            sender_channels = self.sender_channels(sender, clientInformationQueue)
             for client_id, client in clientInformationQueue.items():
                 if (
                     processedCoT.type != "TakPong"
                     and hasattr(sender, "user_id")
                     and client_id == sender.user_id
                 ):
+                    continue
+                # confine the message to clients sharing a channel with the sender
+                if not self.may_deliver(sender_channels, client[1]):
                     continue
                 sock = client[0]
                 try:
@@ -215,9 +254,13 @@ class SendDataController:
                 )
 
             else:
+                sender_channels = self.sender_channels(sender, clientInformationQueue)
                 for uid, client in clientInformationQueue.items():
                     try:
-                        if uid == processedCoT.modelObject.detail._chat.chatgrp.uid1:
+                        if uid == processedCoT.modelObject.detail._chat.chatgrp.uid1 and (
+                            # direct chat is still confined to shared channels
+                            self.may_deliver(sender_channels, client[1])
+                        ):
                             sock = client[0]
                             try:
                                 sock.send(processedCoT.xmlString)

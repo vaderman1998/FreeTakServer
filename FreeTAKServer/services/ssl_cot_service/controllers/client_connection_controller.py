@@ -17,6 +17,7 @@ from FreeTAKServer.core.connection.ClientInformationController import (
 )
 from FreeTAKServer.model.SSLConnection import SSLConnection
 from FreeTAKServer.model.SpecificCoT.Presence import Presence
+from FreeTAKServer.core.configuration.ChannelConstants import parse_channels
 
 from ...ssl_cot_service.model.ssl_cot_connection import SSLCoTConnection
 
@@ -55,6 +56,11 @@ class ClientConnectionController(Controller):
             self.logger.info("Client had invalid connection information and has been disconnected")
             return -1
 
+        # Resolve the channels this client's certificate grants before the
+        # client is published to the queue, so no traffic can be routed to it
+        # while its membership is still unknown
+        clientInformation.channels = self.resolve_channels(clientInformation, db_controller)
+
         # Add client to database
         self.save_client_to_db(clientInformation, db_controller)
 
@@ -72,16 +78,52 @@ class ClientConnectionController(Controller):
         connection = SSLCoTConnection(object_id)
         connection.model_object = clientInformation.modelObject
         connection.sock = clientInformation.socket
+        # carry membership onto the connection so the component broadcast path
+        # can enforce it without a database lookup per message
+        connection.channels = clientInformation.channels
         self.connections[str(connection.get_oid())] = connection
 
         return connection, clientInformation
 
+    @staticmethod
+    def get_certificate_common_name(sock):
+        """Return the common name of the certificate a client presented.
+
+        The SSL CoT service runs with ssl.CERT_REQUIRED against the server CA,
+        so a common name obtained here has been verified and identifies the
+        client; it is not something the client can assert freely.
+        """
+        if not hasattr(sock, "getpeercert"):
+            return None
+        try:
+            cert = sock.getpeercert()
+        except (ValueError, OSError):
+            return None
+        if not cert:
+            return None
+        for rdn in cert.get("subject", ()):
+            for key, value in rdn:
+                if key == "commonName":
+                    return value
+        return None
+
+    def resolve_channels(self, clientInformation, db_controller):
+        """Resolve the channels a newly connected client may exchange CoT on."""
+        common_name = self.get_certificate_common_name(clientInformation.socket)
+        if not common_name:
+            return list(parse_channels(None))
+        try:
+            users = db_controller.query_systemUser(query=f'name = "{common_name}"')
+        except Exception as ex:  # the client must still connect if lookup fails
+            self.logger.debug("exception resolving channels for %s: %s", common_name, ex)
+            return list(parse_channels(None))
+        if not users:
+            return list(parse_channels(None))
+        return list(parse_channels(getattr(users[0], "channels", None)))
+
     def save_client_to_db(self, clientInformation, db_controller):
         try:
-            if hasattr(clientInformation.socket, "getpeercert"):
-                cn = "placeholder"
-            else:
-                cn = None
+            cn = self.get_certificate_common_name(clientInformation.socket)
             CoT_row = EventTableController().convert_model_to_row(clientInformation.modelObject)
             db_controller.create_user(
                     uid=clientInformation.modelObject.uid,

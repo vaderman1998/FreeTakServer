@@ -14,6 +14,9 @@ class SystemUser(Base, UserMixin):
     token = Column(String(30), nullable=True)
     password = Column(String(30), nullable=True)
     group = Column(String(15), default=True, nullable=True)
+    # comma separated channel names this user's CoT traffic is confined to;
+    # empty or null means the public channel only
+    channels = Column(String(255), nullable=True, default=None)
     device_type = Column(String(30), nullable=False)
     certificate_package_name = Column(String(30), nullable=True, default=None)
     api_calls = relationship("APICalls")

@@ -15,6 +15,9 @@ class SSLCoTConnection(Connection):
         self._protocol = XML
         self._model_object: Event = None
         self._sock: socket = None
+        # channels this connection may exchange CoT on, resolved from the
+        # certificate presented at connection time
+        self.channels = None
     
     @property
     def model_object(self):
