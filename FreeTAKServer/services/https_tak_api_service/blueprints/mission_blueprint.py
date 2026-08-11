@@ -133,6 +133,18 @@ def get_mission(mission_id):
         return {"message": f"no mission named {mission_id}"}, 404
     return _as_response(mission), 200
 
+@page.route('/Marti/api/missions/<mission_id>', methods=['DELETE'])
+def delete_mission(mission_id):
+    try:
+        deleted = HTTPSTakApiCommunicationController().make_request("DeleteMission", "mission", {"mission_id": mission_id}, None, True).get_value("mission_deleted")
+    except Exception as ex:
+        logger.error("failed deleting mission %s: %s", mission_id, ex, exc_info=True)
+        return {"message": "An error occurred deleting the mission."}, 500
+
+    if not deleted:
+        return {"message": f"no mission named {mission_id}"}, 404
+    return {"version": "3", "type": "Mission", "data": [], "nodeId": config.nodeID}, 200
+
 @page.route('/Marti/api/missions/<mission_id>/cot', methods=['GET'])
 def get_mission_cots(mission_id):
     """get all cots for a mission"""

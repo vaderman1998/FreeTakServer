@@ -128,6 +128,9 @@ MISSION_EXTERNAL_DATA_NOTIFICATION = "mission_external_data_notification"
 
 MISSION_ROLE = "mission_role"
 
+# the role a mission grants to subscribers when the client does not ask for one
+DEFAULT_MISSION_ROLE = "MISSION_SUBSCRIBER"
+
 MISSION_INVITATION_LIST = "mission_invitation_list"
 
 MISSION_INVITATION_NOTIFICATION = "mission_invitation_notification"

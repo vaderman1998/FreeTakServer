@@ -47,11 +47,14 @@ class MissionDirector(Controller):
         mission_record_builder.add_object_data(mission)
         mission_record = mission_record_builder.get_result()
 
-        mission_role_builder = MissionRoleBuilder(self.request, self.response, self.action_mapper, self.configuration)
-        mission_role_builder.initialize(self.request, self.response)
-        mission_role_builder.build_empty_object(config_loader, *args, **kwargs)
-        mission_role_builder.add_object_data(mission.defaultRole)
-        mission_record.defaultRole = mission_role_builder.get_result()
+        # missions saved before a default role was always assigned have none, and
+        # building a role from nothing would make the whole mission unreadable
+        if mission.defaultRole is not None:
+            mission_role_builder = MissionRoleBuilder(self.request, self.response, self.action_mapper, self.configuration)
+            mission_role_builder.initialize(self.request, self.response)
+            mission_role_builder.build_empty_object(config_loader, *args, **kwargs)
+            mission_role_builder.add_object_data(mission.defaultRole)
+            mission_record.defaultRole = mission_role_builder.get_result()
 
         for cot in mission.cots:
             mission_cot_content_builder = MissionCoTContentBuilder(self.request, self.response, self.action_mapper, self.configuration)

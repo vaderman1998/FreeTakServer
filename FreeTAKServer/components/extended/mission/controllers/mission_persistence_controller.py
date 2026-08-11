@@ -329,6 +329,40 @@ class MissionPersistenceController(Controller):
         except Exception as ex:
             raise ex
         
+    def delete_mission(self, mission_id, *args, **kwargs) -> bool:
+        """delete a mission and everything that hangs off it.
+
+        The relationships carry no cascade, so the dependent rows are removed
+        explicitly; leaving them behind would keep foreign keys pointing at a
+        mission that no longer exists.
+        """
+        try:
+            mission: Mission = self.ses.query(Mission).filter(Mission.PrimaryKey == str(mission_id).lower()).first() # type: ignore
+            if mission is None:
+                return False
+
+            self.ses.query(MissionInvitation).filter(MissionInvitation.mission_uid == mission.PrimaryKey).delete(synchronize_session=False)
+            self.ses.query(MissionToMission).filter(MissionToMission.parent_mission_id == mission.PrimaryKey).delete(synchronize_session=False)
+            self.ses.query(MissionToMission).filter(MissionToMission.child_mission_id == mission.PrimaryKey).delete(synchronize_session=False)
+
+            for mission_log in list(mission.logs):
+                log = mission_log.log
+                self.ses.delete(mission_log)
+                if log is not None:
+                    self.ses.delete(log)
+
+            for related in (mission.contents, mission.cots, mission.externalData,
+                            mission.changes, mission.mission_items, mission.mission_subscriptions):
+                for record in list(related):
+                    self.ses.delete(record)
+
+            self.ses.delete(mission)
+            self.ses.commit()
+            return True
+        except Exception as ex:
+            self.ses.rollback()
+            raise ex
+
     def add_parent_to_mission(self, child_mission:Mission, parent_mission: Mission, *args, **kwargs):
         try:
             mission_parent_rel: MissionToMission = MissionToMission()

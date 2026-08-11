@@ -29,6 +29,7 @@ from FreeTAKServer.core.configuration.MainConfig import MainConfig
 
 from ..configuration.mission_constants import (
     BASE_OBJECT_NAME,
+    DEFAULT_MISSION_ROLE,
     MISSION_CONTENT,
     MISSION_ITEM,
     MISSION_SUBSCRIPTION_DATA,
@@ -80,10 +81,18 @@ class MissionGeneralController(Controller):
         else:
             initial_mission_data = dict(mission_data_args)
 
+        # ATAK creates missions with query arguments, which carry no defaultRole,
+        # so fall back to the role TAK servers give new subscribers. Without a
+        # role the mission is saved but can never be read back, because building
+        # its response needs one.
         if isinstance(initial_mission_data.get('defaultRole'), dict):
-            default_mission_role = self.persistency_controller.get_role(initial_mission_data['defaultRole']["type"])
+            requested_role = initial_mission_data['defaultRole'].get("type")
         else:
-            default_mission_role = self.persistency_controller.get_role(initial_mission_data.get('defaultRole'))
+            requested_role = initial_mission_data.get('defaultRole')
+
+        default_mission_role = self.persistency_controller.get_role(requested_role or DEFAULT_MISSION_ROLE)
+        if default_mission_role is None:
+            default_mission_role = self.persistency_controller.get_role(DEFAULT_MISSION_ROLE)
 
         if initial_mission_data.get('createTime', None) == None or get_datetime_from_dtg(str(initial_mission_data.get('createTime'))).year == 1:
             create_time = get_current_datetime()
@@ -212,6 +221,12 @@ class MissionGeneralController(Controller):
         self.response.set_value("mission", serialized_mission_collection)
         return serialized_mission_collection
     
+    def delete_mission(self, mission_id: str, config_loader, *args, **kwargs):
+        """delete a mission and report whether it existed"""
+        deleted = self.persistency_controller.delete_mission(mission_id)
+        self.response.set_value("mission_deleted", deleted)
+        return deleted
+
     def add_contents_to_mission(self, mission_id, config_loader, action_mapper, hashes=[], uids=[], *args, **kwargs):
         """add contents to a mission"""
         self.request.set_value("objecthashs", hashes)

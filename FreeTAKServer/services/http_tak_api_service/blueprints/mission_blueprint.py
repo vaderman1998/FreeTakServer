@@ -8,6 +8,35 @@ from FreeTAKServer.core.configuration.LoggingConstants import LoggingConstants
 from FreeTAKServer.core.configuration.CreateLoggerController import CreateLoggerController
 logger = CreateLoggerController("FTS-Mission", logging_constants=LoggingConstants()).getLogger()
 
+def _as_response(value):
+    """Coerce a component's return value into something Flask can send.
+
+    The mission components return domain objects as well as strings and
+    dicts; returning an object Flask cannot serialize raises after the view
+    has already succeeded, which surfaced as a 500 on requests that had in
+    fact done their work.
+    """
+    import json as _json
+
+    if isinstance(value, (str, bytes, dict, list)):
+        return value
+    for attribute in ("to_json", "toJson"):
+        if hasattr(value, attribute):
+            try:
+                return getattr(value, attribute)()
+            except Exception:
+                pass
+    if hasattr(value, "__dict__"):
+        try:
+            return _json.dumps(
+                {k: v for k, v in vars(value).items() if not k.startswith("_")},
+                default=str,
+            )
+        except Exception:
+            pass
+    return _json.dumps(value, default=str)
+
+
 page = Blueprint("mission", __name__)
 config = MainConfig.instance()
 
@@ -78,16 +107,43 @@ def get_groups():
 @page.route('/Marti/api/missions/<mission_id>', methods=['PUT'])
 def put_mission(mission_id):
     from flask import request
-    out_data = HTTPTakApiCommunicationController().make_request("PutMission", "mission", {"mission_id": mission_id, "mission_data": request.data, "mission_data_args": request.args, "creatorUid": request.args.get("creatorUid")}, None, True).get_value("mission_subscription"), 200 # type: ignore
-    HTTPTakApiCommunicationController().make_request("MissionCreatedNotification", "mission", {"mission_id": mission_id}, None, synchronous= False)
-    print(out_data)
-    return out_data
+    try:
+        subscription = HTTPTakApiCommunicationController().make_request("PutMission", "mission", {"mission_id": mission_id, "mission_data": request.data, "mission_data_args": request.args, "creatorUid": request.args.get("creatorUid")}, None, True).get_value("mission_subscription") # type: ignore
+        HTTPTakApiCommunicationController().make_request("MissionCreatedNotification", "mission", {"mission_id": mission_id}, None, synchronous=False)
+    except Exception as ex:
+        logger.error("failed creating mission %s: %s", mission_id, ex, exc_info=True)
+        return {"message": "An error occurred creating the mission."}, 500
+
+    if subscription is None:
+        # the mission is persisted even when no subscription comes back, so
+        # returning an empty body here would fail the client for no reason
+        logger.error("mission %s created but no subscription was returned", mission_id)
+        return {"version": "3", "type": "Mission", "data": [], "nodeId": config.nodeID}, 201
+    return _as_response(subscription), 200
 
 @page.route('/Marti/api/missions/<mission_id>', methods=['GET'])
 def get_mission(mission_id):
-    out_data = HTTPTakApiCommunicationController().make_request("GetMission", "mission", {"mission_id": mission_id}, None, True).get_value("mission"), 200
-    print(out_data)
-    return out_data
+    try:
+        mission = HTTPTakApiCommunicationController().make_request("GetMission", "mission", {"mission_id": mission_id}, None, True).get_value("mission")
+    except Exception as ex:
+        logger.error("failed retrieving mission %s: %s", mission_id, ex, exc_info=True)
+        return {"message": "An error occurred retrieving the mission."}, 500
+
+    if mission is None:
+        return {"message": f"no mission named {mission_id}"}, 404
+    return _as_response(mission), 200
+
+@page.route('/Marti/api/missions/<mission_id>', methods=['DELETE'])
+def delete_mission(mission_id):
+    try:
+        deleted = HTTPTakApiCommunicationController().make_request("DeleteMission", "mission", {"mission_id": mission_id}, None, True).get_value("mission_deleted")
+    except Exception as ex:
+        logger.error("failed deleting mission %s: %s", mission_id, ex, exc_info=True)
+        return {"message": "An error occurred deleting the mission."}, 500
+
+    if not deleted:
+        return {"message": f"no mission named {mission_id}"}, 404
+    return {"version": "3", "type": "Mission", "data": [], "nodeId": config.nodeID}, 200
 
 @page.route('/Marti/api/missions/<mission_id>/cot', methods=['GET'])
 def get_mission_cots(mission_id):
