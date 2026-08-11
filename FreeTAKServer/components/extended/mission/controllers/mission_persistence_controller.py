@@ -296,7 +296,7 @@ class MissionPersistenceController(Controller):
         except Exception as ex:
             raise ex
 
-    def create_mission(self, mission_id: str, name, description, uids, contents, createTime, passwordProtected, groups, defaultRole, serviceUri, classification, tool, *args, **kwargs):
+    def create_mission(self, mission_id: str, name, description, uids, contents, createTime, passwordProtected, groups, defaultRole, serviceUri, classification, tool, creatorUid=None, *args, **kwargs):
         """this method is used to create a new mission, save it to the database and return the mission information
         to the client in json format, it uses the mission persistence controller to access the database.
         """
@@ -313,6 +313,9 @@ class MissionPersistenceController(Controller):
             mission.serviceUri = serviceUri
             mission.classification = classification
             mission.tool = tool
+            # the client that created the mission owns it, and clients decide
+            # what a user may do from this
+            mission.creatorUid = creatorUid or ""
             self.ses.add(mission)
             self.ses.commit()
             return mission

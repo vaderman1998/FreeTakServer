@@ -116,11 +116,11 @@ class MissionGeneralController(Controller):
             defaultRole=default_mission_role,
             serviceUri=str(initial_mission_data.get('serviceUri')),
             classification=str(initial_mission_data.get('classification')),
-            clientUid = creatorUid
+            creatorUid = creatorUid
         )
-        
+
         token = self.token_controller.get_token(mission_db_obj)
-        
+
         subscription_db_obj = self.persistency_controller.create_subscription(None, str(mission_id), token=token, client_uid=creatorUid, role=self.persistency_controller.get_role("MISSION_OWNER"))
         
         mission_obj = self.mission_director.construct(mission_db_obj, config_loader)
