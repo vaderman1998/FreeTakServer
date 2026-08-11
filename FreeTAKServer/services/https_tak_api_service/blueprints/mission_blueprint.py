@@ -23,19 +23,48 @@ def get_invitations():
 
 @page.route('/Marti/api/groups/all')
 def get_groups():
+    """Report the channels this server defines to TAK clients.
+
+    Clients list these as channels; membership is still enforced by the CoT
+    services from the certificate a client connects with, so a channel
+    appearing here does not grant access to its traffic.
+    """
+    from FreeTAKServer.core.persistence.DatabaseController import DatabaseController
+
+    groups = []
+    try:
+        channels = DatabaseController().query_channel()
+    except Exception:
+        channels = []
+
+    # every channel is reported in both directions, as TAK clients expect
+    for index, channel in enumerate(channels):
+        for direction in ("IN", "OUT"):
+            groups.append({
+                "name": channel.name,
+                "direction": direction,
+                "created": "2023-02-22",
+                "type": "SYSTEM",
+                "bitpos": index + 3,
+                "active": True,
+            })
+
+    # the anonymous group is what clients fall back to, and is the only group
+    # when no channels have been defined
+    for direction in ("IN", "OUT"):
+        groups.append({
+            "name": "__ANON__",
+            "direction": direction,
+            "created": "2023-02-22",
+            "type": "SYSTEM",
+            "bitpos": 2,
+            "active": True,
+        })
+
     return {
         "version": "3",
         "type": "com.bbn.marti.remote.groups.Group",
-        "data": [
-            {
-                "name": "__ANON__",
-                "direction": "OUT",
-                "created": "2023-02-22",
-                "type": "SYSTEM",
-                "bitpos": 2,
-                "active": True
-            }
-        ],
+        "data": groups,
         "nodeId": config.nodeID
     }
     
