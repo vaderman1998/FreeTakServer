@@ -110,6 +110,9 @@ class ClientConnectionController(Controller):
     def resolve_channels(self, clientInformation, db_controller):
         """Resolve the channels a newly connected client may exchange CoT on."""
         common_name = self.get_certificate_common_name(clientInformation.socket)
+        # remembered so membership can be refreshed later without another
+        # TLS handshake, letting channel changes apply to connected clients
+        clientInformation.common_name = common_name
         if not common_name:
             return list(parse_channels(None))
         try:

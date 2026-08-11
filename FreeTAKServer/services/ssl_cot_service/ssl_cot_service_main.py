@@ -1,4 +1,8 @@
-from FreeTAKServer.core.configuration.ChannelConstants import parse_channels
+from FreeTAKServer.core.configuration.ChannelConstants import (
+    CHANNEL_REFRESH_SECONDS,
+    channels_for_common_name,
+    parse_channels,
+)
 import re
 from asyncio import Queue
 import threading
@@ -400,6 +404,41 @@ class SSLCoTServiceMain(DigitalPyService):
                     "single response exception traceback: %s", traceback.format_exc()
                 )
 
+    def refresh_channel_memberships(self):
+        """Re-resolve every connected client's channels.
+
+        Membership is decided when a client connects, so without this a
+        change only took effect after the client reconnected. The lookup is
+        cached, so this is cheap enough to call from the main loop.
+        """
+        import time
+
+        now = time.time()
+        if now - getattr(self, "_channels_refreshed_at", 0) < CHANNEL_REFRESH_SECONDS:
+            return
+        self._channels_refreshed_at = now
+
+        from FreeTAKServer.core.persistence.DatabaseController import DatabaseController
+
+        try:
+            db_controller = getattr(self, "_channel_db_controller", None)
+            if db_controller is None:
+                db_controller = DatabaseController()
+                self._channel_db_controller = db_controller
+
+            for user_id, entry in list(self.client_information_queue.items()):
+                client_information = entry[1]
+                common_name = getattr(client_information, "common_name", None)
+                if not common_name:
+                    continue
+                channels = channels_for_common_name(common_name, db_controller, now)
+                client_information.channels = channels
+                connection = self.connections.get(str(user_id))
+                if connection is not None:
+                    connection.channels = channels
+        except Exception as ex:
+            self.logger.debug("could not refresh channel memberships: %s", ex)
+
     def record_origin_channels(self, data_object):
         """Record the channels of the client a raw CoT message came from.
 
@@ -671,6 +710,7 @@ class SSLCoTServiceMain(DigitalPyService):
                         pass
 
                     try:
+                        self.refresh_channel_memberships()
                         self.broadcast_component_responses()
                     except Exception as e:
                         self.logger.error(

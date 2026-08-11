@@ -58,3 +58,33 @@ def normalize_channel_input(raw) -> str:
         names = [str(name).strip() for name in raw]
     names = [name for name in names if name]
     return ",".join(names) if names else None
+
+
+# Channel membership is resolved from the database when a client connects.
+# Re-reading it for every message would be far too expensive, and never
+# re-reading it means changes only apply after a client reconnects, so
+# memberships are cached for a short interval and refreshed in the
+# background as clients send traffic.
+CHANNEL_REFRESH_SECONDS = 15
+
+_membership_cache = {}
+
+
+def channels_for_common_name(common_name, db_controller, now):
+    """Channels granted to a certificate common name, cached briefly."""
+    if not common_name:
+        return [PUBLIC_CHANNEL]
+
+    cached = _membership_cache.get(common_name)
+    if cached is not None and now - cached[0] < CHANNEL_REFRESH_SECONDS:
+        return cached[1]
+
+    try:
+        users = db_controller.query_systemUser(query=f'name = "{common_name}"')
+    except Exception:
+        # keep whatever was last known rather than silently isolating a client
+        return cached[1] if cached else [PUBLIC_CHANNEL]
+
+    channels = parse_channels(getattr(users[0], "channels", None)) if users else [PUBLIC_CHANNEL]
+    _membership_cache[common_name] = (now, channels)
+    return channels
