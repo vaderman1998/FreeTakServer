@@ -20,7 +20,7 @@ class DataPackageServerConstants:
         self.IP = "0.0.0.0"
         self.versionInfo = config.version
         self.NodeID = 'FTS'
-        #self.VERSIONJSON = '{"version":"3","type":"ServerConfig", "data":{"version": "%s", "api": "3","hostname":"%s"}, "nodeId":"%s"}' % (
-        #    self.versionInfo, "0.0.0.0", self.NodeID)
-        self.VERSIONJSON = '{"version":"3","type":"ServerConfig","data":{"version":"2.1 RC1-FTS-RELEASE","api":"3","hostname":"%s"},"nodeId":"%s"}' % (
-            "0.0.0.0", config.nodeID)
+        # version string shown by TAK clients (Marti /api/version/config),
+        # derived from the real release version instead of a hardcoded label
+        self.VERSIONJSON = '{"version":"3","type":"ServerConfig","data":{"version":"%s-FTS-RELEASE","api":"3","hostname":"%s"},"nodeId":"%s"}' % (
+            config.version.replace("FreeTAKServer-", ""), "0.0.0.0", config.nodeID)
