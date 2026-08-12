@@ -38,28 +38,21 @@ CLIENT_CERT_PATH = "cert"
 TRUSTSTORE_NAME = "caCert.p12"
 PREFERENCES_NAME = "config.pref"
 MANIFEST_NAME = "MANIFEST.xml"
+# the password an official server encrypts this store with, and so the one a
+# client falls back to when it has none of its own recorded for the server
+TRUSTSTORE_PASSWORD = "atakatak"
 
 
 def build_truststore(ca_pem_path, password: str) -> bytes:
     """A store holding the authority a client should trust this server by.
 
-    The server's own store is used when there is one. It is what this server
-    already hands to clients and what they are known to accept: a store built
-    from the authority alone keeps it in a form a client's keystore does not
-    expose, so the client reads no authority out of it at all and refuses the
-    server for want of one. It carries the server's key, which the packages
-    this server already builds also carry.
-
-    Falling back to building one keeps this working on a server whose own
-    store is missing.
+    Built to match the store an official server hands out: the authority on
+    its own, with no key and no certificate of the server's, so that a client
+    reading it comes away with the authority and nothing else.
     """
-    server_store = Path(str(config.p12Dir))
-    if server_store.exists():
-        return server_store.read_bytes()
-
     ca_certificate = x509.load_pem_x509_certificate(Path(ca_pem_path).read_bytes())
     return pkcs12.serialize_key_and_certificates(
-        name=b"truststore-root",
+        name=b"caCert",
         key=None,
         cert=None,
         cas=[ca_certificate],
@@ -115,8 +108,8 @@ def main():
     parser.add_argument("-p", "--port", type=int, default=config.SSLCoTServicePort,
                         help="the CoT port clients connect to (default: %(default)s)")
     parser.add_argument("-o", "--output", help="file to write (default: enrollment-<host>.zip)")
-    parser.add_argument("--password", default=str(config.password),
-                        help="password for the truststore (default: the server's certificate password)")
+    parser.add_argument("--password", default=TRUSTSTORE_PASSWORD,
+                        help="password for the truststore (default: %(default)s, what TAK clients expect)")
     arguments = parser.parse_args()
 
     output = arguments.output or f"enrollment-{arguments.host.replace('.', '-')}.zip"
