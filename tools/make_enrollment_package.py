@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from cryptography import x509  # noqa: E402
 from cryptography.hazmat.primitives.serialization import pkcs12  # noqa: E402
+from cryptography.hazmat.primitives.serialization.pkcs12 import PKCS12Certificate  # noqa: E402
 
 from FreeTAKServer.core.configuration.MainConfig import MainConfig  # noqa: E402
 from FreeTAKServer.core.util.certificate_generation import _p12_encryption  # noqa: E402
@@ -52,10 +53,14 @@ def build_truststore(ca_pem_path, password: str) -> bytes:
     """
     ca_certificate = x509.load_pem_x509_certificate(Path(ca_pem_path).read_bytes())
     return pkcs12.serialize_key_and_certificates(
-        name=b"caCert",
+        name=None,
         key=None,
         cert=None,
-        cas=[ca_certificate],
+        # the authority is given a name, because a client lists what a store
+        # holds by the names inside it: an unnamed certificate is not listed
+        # at all, so a client reads nothing out of the store and trusts
+        # nothing, however correct the certificate in it is
+        cas=[PKCS12Certificate(ca_certificate, b"caCert")],
         # TAK clients cannot read a modern AES encrypted store
         encryption_algorithm=_p12_encryption(password.encode()),
     )
