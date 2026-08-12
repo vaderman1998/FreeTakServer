@@ -336,7 +336,7 @@ import time
 from FreeTAKServer.model.sockets.SSLServerSocket import SSLServerSocket
 from FreeTAKServer.core.connection.SSLSocketController import SSLSocketController
 
-from .blueprints import excheck_blueprint, citrap_blueprint, misc_blueprint, mission_blueprint, enterprise_sync_blueprint
+from .blueprints import excheck_blueprint, citrap_blueprint, misc_blueprint, mission_blueprint, enterprise_sync_blueprint, enrollment_blueprint
 
 class HTTPSTakAPI(DigitalPyService):
      # a dictionary containing the request_id and response objects for all received requests
@@ -418,6 +418,7 @@ class HTTPSTakAPI(DigitalPyService):
             self.SSLSocketController.changePort(HTTPPORT)
             self.setSSL(True)
             self.register_blueprints(app)
+            self.serve_enrollment(app)
             wsgi.server(sock=wrap_ssl(listen((DataPackageServerConstants().IP, int(HTTPPORT))), keyfile=config.unencryptedKey,
                                       certfile=config.pemDir,
                                       server_side=True, ca_certs=config.CA, cert_reqs=ssl.CERT_REQUIRED), site=app)
@@ -426,12 +427,37 @@ class HTTPSTakAPI(DigitalPyService):
             return -1
 
 
+    def serve_enrollment(self, app):
+        """Listen for clients enrolling for a certificate.
+
+        A client enrolling has no certificate yet, so it authenticates with a
+        username and password on a port of its own. It expects that port to
+        be 8446 and will not look elsewhere for it.
+        """
+        import eventlet
+
+        port = int(getattr(config, "CertificateEnrollmentPort", 8446))
+        try:
+            socket = wrap_ssl(
+                listen((DataPackageServerConstants().IP, port)),
+                keyfile=config.unencryptedKey,
+                certfile=config.pemDir,
+                server_side=True,
+            )
+        except Exception as ex:
+            logger.error("could not listen for enrollment on port %s: %s", port, ex)
+            return
+
+        eventlet.spawn(wsgi.server, socket, app)
+        logger.info("listening for certificate enrollment on port %s", port)
+
     def register_blueprints(self, app):
         app.register_blueprint(excheck_blueprint.page)
         app.register_blueprint(citrap_blueprint.page)
         app.register_blueprint(misc_blueprint.page)
         app.register_blueprint(mission_blueprint.page)
         app.register_blueprint(enterprise_sync_blueprint.page)
+        app.register_blueprint(enrollment_blueprint.page)
         
     def setIP(self, IP_to_be_set):
         global IP

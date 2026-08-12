@@ -11,7 +11,7 @@ from uuid import uuid4
 
 # the version information of the server (recommended to leave as default)
 
-FTS_VERSION = "FreeTAKServer-2.11.0"
+FTS_VERSION = "FreeTAKServer-2.12.0"
 API_VERSION = "3"
 ROOTPATH = "/"
 MAINPATH = Path(__file__).parent.parent.parent
@@ -70,6 +70,8 @@ class MainConfig:
         "CoTServicePort": {"default": 8087, "type": int},
         "SSLCoTServicePort": {"default": 8089, "type": int},
         "HTTPSTakAPIPort": {"default": 8443, "type": int},
+        # where TAK clients enrol for a certificate, which they expect on 8446
+        "CertificateEnrollmentPort": {"default": 8446, "type": int},
         "HTTPTakAPIPort": {"default": 8080, "type": int},
         # this needs to be changed for private data packages to work
         "DataPackageServiceDefaultIP": {"default": _ip, "type": str},

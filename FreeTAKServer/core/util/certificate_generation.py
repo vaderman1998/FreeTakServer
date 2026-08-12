@@ -37,6 +37,49 @@ def _fts_x509_name(common_name: str) -> x509.Name:
     ])
 
 
+def sign_certificate_request(csr_pem: bytes, expiry_time_secs: int = 31536000,
+                             ca_pem_path=config.CA, ca_key_path=config.CAkey):
+    """Sign a client's certificate request with this server's CA.
+
+    A client enrolling with the server keeps its own private key and sends
+    only the request, so unlike the certificates baked here there is no key
+    to hand back. The subject is taken from the request, since the client
+    chose the name it wants to be known by.
+
+    Returns the signed certificate and the CA certificate, both PEM encoded.
+    """
+    csr = x509.load_pem_x509_csr(csr_pem)
+    if not csr.is_signature_valid:
+        raise ValueError("the certificate request is not correctly signed")
+
+    ca_key = serialization.load_pem_private_key(open(ca_key_path, "rb").read(), password=None)
+    ca_cert = x509.load_pem_x509_certificate(open(ca_pem_path, "rb").read())
+
+    now = datetime.now(timezone.utc)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(csr.subject)
+        .issuer_name(ca_cert.subject)
+        .serial_number(random.getrandbits(64))
+        .not_valid_before(now)
+        .not_valid_after(now + timedelta(seconds=expiry_time_secs))
+        .public_key(csr.public_key())
+        .sign(ca_key, hashes.SHA256())
+    )
+    return (
+        certificate.public_bytes(serialization.Encoding.PEM),
+        ca_cert.public_bytes(serialization.Encoding.PEM),
+    )
+
+
+def certificate_request_common_name(csr_pem: bytes):
+    """The common name a certificate request asks for."""
+    csr = x509.load_pem_x509_csr(csr_pem)
+    for attribute in csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME):
+        return attribute.value
+    return None
+
+
 def _p12_encryption(password: bytes):
     # TAK clients (ATAK/iTAK/WinTAK) expect the legacy PKCS12 encryption that
     # OpenSSL 1.1.x produced (SHA1 + 3DES); modern AES-256 defaults are not
