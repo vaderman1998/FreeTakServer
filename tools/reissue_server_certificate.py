@@ -105,6 +105,29 @@ def main():
     )
     pem_path.write_bytes(pem)
 
+    # the server's own store has to hold what the server now presents, or a
+    # client checking against a store built from it rejects the server
+    store_path = Path(str(config.p12Dir))
+    if store_path.exists():
+        from cryptography.hazmat.primitives.serialization import pkcs12
+        from FreeTAKServer.core.util.certificate_generation import _p12_encryption
+
+        key = serialization.load_pem_private_key(
+            Path(str(config.unencryptedKey)).read_bytes(), password=None
+        )
+        ca_certificate = x509.load_pem_x509_certificate(Path(str(config.CA)).read_bytes())
+        store_backup = store_path.with_suffix(".p12.before-san")
+        if not store_backup.exists():
+            shutil.copy2(store_path, store_backup)
+        store_path.write_bytes(pkcs12.serialize_key_and_certificates(
+            name=b"server",
+            key=key,
+            cert=x509.load_pem_x509_certificate(pem),
+            cas=[ca_certificate],
+            encryption_algorithm=_p12_encryption(str(config.password).encode()),
+        ))
+        print(f"wrote {store_path}")
+
     print(f"wrote {pem_path}")
     print(f"  answers to  {', '.join(addresses)}")
     print(f"  valid for   {arguments.days} days")

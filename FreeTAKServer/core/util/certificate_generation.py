@@ -108,6 +108,35 @@ def _p12_encryption(password: bytes):
     )
 
 
+
+# the password TAK clients fall back to for a store they have nothing recorded for
+TRUSTSTORE_PASSWORD = "atakatak"
+
+
+def build_ca_truststore(password: str = TRUSTSTORE_PASSWORD, ca_pem_path=None) -> bytes:
+    """A store holding this server's authority, for clients to trust it by.
+
+    Holding the authority rather than a certificate of the server's means a
+    client keeps working when the server's own certificate is reissued, and
+    means the server's key is not handed to every client that connects.
+
+    The authority is named, because a client lists what a store holds by the
+    names inside it and passes over anything unnamed.
+    """
+    from cryptography.hazmat.primitives.serialization.pkcs12 import PKCS12Certificate
+
+    ca_certificate = x509.load_pem_x509_certificate(
+        open(ca_pem_path or config.CA, "rb").read()
+    )
+    return pkcs12.serialize_key_and_certificates(
+        name=None,
+        key=None,
+        cert=None,
+        cas=[PKCS12Certificate(ca_certificate, b"caCert")],
+        encryption_algorithm=_p12_encryption(password.encode()),
+    )
+
+
 def _sign_crl(revoked_certs, ca_cert, ca_private_key):
     """Build and sign a CRL containing the given revoked certificates."""
     now = datetime.now(timezone.utc)
@@ -249,7 +278,7 @@ def generate_standard_zip(server_address: str = None, server_filename: str = "",
         <preference version="1" name="com.atakmap.app_preferences">
             <entry key="displayServerConnectionWidget" class="class java.lang.Boolean">true</entry>
             <entry key="caLocation" class="class java.lang.String">/cert/{{ server_filename }}</entry>
-            <entry key="caPassword" class="class java.lang.String">{{ cert_password }}</entry>
+            <entry key="caPassword" class="class java.lang.String">{{ truststore_password }}</entry>
             <entry key="clientPassword" class="class java.lang.String">{{ cert_password }}</entry>
             <entry key="certificateLocation" class="class java.lang.String">/cert/{{ user_filename }}</entry>
             <entry key="prefs_enable_channels" class="class java.lang.String">true</entry>
@@ -281,6 +310,7 @@ def generate_standard_zip(server_address: str = None, server_filename: str = "",
         server_address = config.UserConnectionIP
     pref = pref_file_template.render(server=server_address, server_filename=server_filename,
                                      user_filename=user_filename, cert_password=cert_password,
+                                     truststore_password=TRUSTSTORE_PASSWORD,
                                      port=str(config.SSLCoTServicePort))
     man = manifest_file_template.render(uid=random_id, server=server_address, server_filename=server_filename,
                                         user_filename=user_filename)
@@ -288,7 +318,8 @@ def generate_standard_zip(server_address: str = None, server_filename: str = "",
         pref_file.write(pref)
     with open('manifest.xml', 'w') as manifest_file:
         manifest_file.write(man)
-    copyfile(config.p12Dir, server_filename)
+    with open(server_filename, 'wb') as truststore:
+        truststore.write(build_ca_truststore())
     copyfile(pathlib.Path(config.certsPath, user_filename), pathlib.Path(user_filename))
     with zipfile.ZipFile(
         pathlib.PurePath(pathlib.Path(config.ClientPackages), pathlib.Path(f"{username}.zip")),
@@ -328,7 +359,7 @@ def generate_wintak_zip(server_address: str = None, server_filename: str = "", u
         <preference version="1" name="com.atakmap.app_preferences">
             <entry key="displayServerConnectionWidget" class="class java.lang.Boolean">true</entry>
             <entry key="caLocation" class="class java.lang.String">/storage/emulated/0/atak/cert/{{ server_filename }}</entry>
-            <entry key="caPassword" class="class java.lang.String">{{ cert_password }}</entry>
+            <entry key="caPassword" class="class java.lang.String">{{ truststore_password }}</entry>
             <entry key="clientPassword" class="class java.lang.String">{{ cert_password }}</entry>
             <entry key="certificateLocation" class="class java.lang.String">/storage/emulated/0/atak/cert/{{ user_filename }}</entry>
             <entry key="prefs_enable_channels" class="class java.lang.String">true</entry>
@@ -373,6 +404,7 @@ def generate_wintak_zip(server_address: str = None, server_filename: str = "", u
         server_address = config.UserConnectionIP
     pref = pref_file_template.render(server=server_address, server_filename=server_filename,
                                      user_filename=user_filename, cert_password=cert_password,
+                                     truststore_password=TRUSTSTORE_PASSWORD,
                                      port=str(config.SSLCoTServicePort))
     man = manifest_file_template.render(uid=random_id, server=server_address, server_filename=server_filename,
                                         user_filename=user_filename, folder=folder)
@@ -387,7 +419,8 @@ def generate_wintak_zip(server_address: str = None, server_filename: str = "", u
         pref_file.write(pref)
     with open('./MANIFEST/manifest.xml', 'w') as manifest_file:
         manifest_file.write(man)
-    copyfile(config.p12Dir, "./" + folder + "/" + server_filename)
+    with open("./" + folder + "/" + server_filename, "wb") as truststore:
+        truststore.write(build_ca_truststore())
     copyfile(pathlib.Path(config.certsPath, user_filename), pathlib.Path(folder, user_filename))
     zipf = zipfile.ZipFile(f"{username}.zip", 'w', zipfile.ZIP_DEFLATED)
     for root, dirs, files in os.walk('./' + folder):

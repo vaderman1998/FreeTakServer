@@ -53,7 +53,7 @@ def store_selection(client_uid, payload) -> list:
 
     names = selected_channel_names(payload)
     try:
-        DatabaseController().update_user(
+        _fresh(DatabaseController()).update_user(
             column_value={"active_channels": normalize_channel_input(names)},
             query=f'uid = "{client_uid}"',
         )
@@ -65,6 +65,21 @@ def store_selection(client_uid, payload) -> list:
 
     logger.debug("client %s is now active on %s", client_uid, names or "all of its channels")
     return names
+
+
+def _fresh(db_controller):
+    """End the current transaction so committed changes are visible.
+
+    Clients connect and are recorded by another process, and a session that
+    holds its transaction open keeps reading the state it first saw, which
+    here means answering with the channels of whoever used a device before.
+    """
+    try:
+        db_controller.session.rollback()
+        db_controller.session.expire_all()
+    except Exception:
+        pass
+    return db_controller
 
 
 def selection_for_client(client_uid=None, address=None):
@@ -82,7 +97,7 @@ def selection_for_client(client_uid=None, address=None):
 
     query = f'uid = "{client_uid}"' if client_uid else f'IP = "{address}"'
     try:
-        users = DatabaseController().query_user(query=query)
+        users = _fresh(DatabaseController()).query_user(query=query)
     except Exception as ex:
         logger.debug("failed resolving client for %s: %s", query, ex)
         return None, None
@@ -108,7 +123,7 @@ def allowed_channels_for(common_name):
         return None
 
     try:
-        user = system_user_for_common_name(common_name, DatabaseController())
+        user = system_user_for_common_name(common_name, _fresh(DatabaseController()))
     except Exception as ex:
         logger.debug("failed resolving channels for %s: %s", common_name, ex)
         return None

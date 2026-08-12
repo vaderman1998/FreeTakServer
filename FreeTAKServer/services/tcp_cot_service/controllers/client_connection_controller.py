@@ -75,6 +75,25 @@ class ClientConnectionController(Controller):
 
         return connection, clientInformation
 
+
+    def forget_other_clients_at(self, clientInformation, db_controller):
+        """Drop any other client recorded at this client's address.
+
+        A client asks for its channels without saying who it is, so it is
+        matched on the address it calls from, and a device that was here as
+        someone else would otherwise answer for it.
+        """
+        try:
+            address = getattr(clientInformation, "IP", None)
+            uid = getattr(clientInformation.modelObject, "uid", None)
+            if not address:
+                return
+            for user in db_controller.query_user(query=f'IP = "{address}"'):
+                if getattr(user, "uid", None) != uid:
+                    db_controller.remove_user(query=f'uid = "{user.uid}"')
+        except Exception as ex:
+            self.logger.debug("could not clear earlier clients at this address: %s", ex)
+
     def save_client_to_db(self, clientInformation, db_controller):
         try:
             if hasattr(clientInformation.socket, "getpeercert"):
@@ -82,6 +101,7 @@ class ClientConnectionController(Controller):
             else:
                 cn = None
             CoT_row = EventTableController().convert_model_to_row(clientInformation.modelObject)
+            self.forget_other_clients_at(clientInformation, db_controller)
             db_controller.create_user(
                     uid=clientInformation.modelObject.uid,
                     callsign=clientInformation.modelObject.detail.contact.callsign,

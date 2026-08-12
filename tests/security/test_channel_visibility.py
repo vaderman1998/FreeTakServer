@@ -92,7 +92,16 @@ check(
 )
 
 # a certificate made by hand, whose common name is exactly the user's name
-present_as("chan-bravo-one")
+HANDMADE_USER = "visibility-probe-handmade"
+database = connect()
+database.execute(
+    'insert or replace into SystemUser (uid, name, token, password, device_type, channels)'
+    " values (?,?,?,?,?,?)",
+    (HANDMADE_USER + "-id", HANDMADE_USER, "vis-token2", "vis-pass2", "mobile", "bravo"),
+)
+database.commit()
+database.close()
+present_as(HANDMADE_USER)
 status, channels = visible_channels()
 check(channels == ["bravo"], f"a hand-made certificate shows its user's channels (got {channels})")
 
@@ -113,6 +122,7 @@ check(len(channels) > 1, f"an unrecognised caller still gets a channel list (got
 database = connect()
 database.execute("delete from User where uid = ?", (PROBE_UID,))
 database.execute("delete from SystemUser where uid = ?", (ISSUED_USER_ID,))
+database.execute("delete from SystemUser where name = ?", (HANDMADE_USER,))
 database.commit()
 database.close()
 
