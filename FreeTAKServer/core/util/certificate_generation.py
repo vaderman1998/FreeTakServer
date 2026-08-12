@@ -252,6 +252,8 @@ def generate_standard_zip(server_address: str = None, server_filename: str = "",
             <entry key="caPassword" class="class java.lang.String">{{ cert_password }}</entry>
             <entry key="clientPassword" class="class java.lang.String">{{ cert_password }}</entry>
             <entry key="certificateLocation" class="class java.lang.String">/cert/{{ user_filename }}</entry>
+            <entry key="prefs_enable_channels" class="class java.lang.String">true</entry>
+            <entry key="prefs_enable_channels_host-{{ server }}" class="class java.lang.String">true</entry>
         </preference>
     </preferences>
     """)
@@ -329,6 +331,8 @@ def generate_wintak_zip(server_address: str = None, server_filename: str = "", u
             <entry key="caPassword" class="class java.lang.String">{{ cert_password }}</entry>
             <entry key="clientPassword" class="class java.lang.String">{{ cert_password }}</entry>
             <entry key="certificateLocation" class="class java.lang.String">/storage/emulated/0/atak/cert/{{ user_filename }}</entry>
+            <entry key="prefs_enable_channels" class="class java.lang.String">true</entry>
+            <entry key="prefs_enable_channels_host-{{ server }}" class="class java.lang.String">true</entry>
         </preference>
     </preferences>
     """)

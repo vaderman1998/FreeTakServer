@@ -9,6 +9,8 @@ from FreeTAKServer.core.RestMessageControllers.RestEnumerations import RestEnume
 from FreeTAKServer.core.util import certificate_generation
 from ..controllers.authentication import auth, ADMIN_ROLE
 from FreeTAKServer.core.configuration.ChannelConstants import normalize_channel_input
+from FreeTAKServer.core.configuration.LoggingConstants import LoggingConstants
+from FreeTAKServer.core.configuration.CreateLoggerController import CreateLoggerController
 from geopy import Point, distance, Nominatim
 import datetime as dt
 
@@ -22,6 +24,7 @@ from FreeTAKServer.core.configuration.CreateLoggerController import CreateLogger
 
 config = MainConfig.instance()
 page = Blueprint('user_management', __name__)
+logger = CreateLoggerController("FTS-UserManagement", logging_constants=LoggingConstants()).getLogger()
 logger = CreateLoggerController("FTS-QR", logging_constants=LoggingConstants()).getLogger()
 
 @page.route('/GenerateQR', methods=['GET'])
@@ -125,6 +128,11 @@ def post_system_user():
                                                 channels=normalize_channel_input(systemuser.get("Channels")),
                                                 role=systemuser.get("Role", systemuser.get("Group")))
         except Exception as e:
+            # without this the only trace of a failed creation is a message
+            # naming the user, which says nothing about what went wrong
+            logger.error("failed creating system user %s: %s",
+                         systemuser.get("Name") if isinstance(systemuser, dict) else systemuser,
+                         e, exc_info=True)
             if isinstance(systemuser, dict) and "Name" in systemuser:
                 errors.append(f"operation failed for user {systemuser['Name']}")
             else:
