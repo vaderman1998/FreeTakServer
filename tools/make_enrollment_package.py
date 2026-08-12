@@ -41,19 +41,29 @@ MANIFEST_NAME = "MANIFEST.xml"
 
 
 def build_truststore(ca_pem_path, password: str) -> bytes:
-    """A truststore holding this server's certificate authority.
+    """A store holding the authority a client should trust this server by.
 
-    It carries no private key: the client only needs to recognise what the
-    authority signed, not to sign anything itself.
+    The server's own store is used when there is one. It is what this server
+    already hands to clients and what they are known to accept: a store built
+    from the authority alone keeps it in a form a client's keystore does not
+    expose, so the client reads no authority out of it at all and refuses the
+    server for want of one. It carries the server's key, which the packages
+    this server already builds also carry.
+
+    Falling back to building one keeps this working on a server whose own
+    store is missing.
     """
+    server_store = Path(str(config.p12Dir))
+    if server_store.exists():
+        return server_store.read_bytes()
+
     ca_certificate = x509.load_pem_x509_certificate(Path(ca_pem_path).read_bytes())
     return pkcs12.serialize_key_and_certificates(
         name=b"truststore-root",
         key=None,
         cert=None,
         cas=[ca_certificate],
-        # TAK clients cannot read a modern AES encrypted store, and a client
-        # that cannot open the store has nothing to trust the server with
+        # TAK clients cannot read a modern AES encrypted store
         encryption_algorithm=_p12_encryption(password.encode()),
     )
 
