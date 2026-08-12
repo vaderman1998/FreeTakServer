@@ -30,8 +30,10 @@ from FreeTAKServer.core.util.certificate_generation import _p12_encryption  # no
 
 config = MainConfig.instance()
 
-# where a TAK client keeps the certificates it was given
-CLIENT_CERT_PATH = "/storage/emulated/0/atak/cert"
+# where a client looks for the files a package brought with it. This is the
+# form the server's own client packages use and that clients here accept; an
+# absolute path into the device's storage is not where a client keeps them.
+CLIENT_CERT_PATH = "/cert"
 
 
 def build_truststore(ca_pem_path, password: str) -> bytes:
@@ -84,8 +86,8 @@ def build_manifest(package_uid: str, name: str, truststore_name: str) -> str:
         <Parameter name="onReceiveDelete" value="true"/>
     </Configuration>
     <Contents>
-        <Content ignore="false" zipEntry="fts.pref"/>
-        <Content ignore="false" zipEntry="{truststore_name}"/>
+        <Content ignore="false" zipEntry="cert/fts.pref"/>
+        <Content ignore="false" zipEntry="cert/{truststore_name}"/>
     </Contents>
 </MissionPackageManifest>
 """
@@ -111,8 +113,11 @@ def main():
     except FileNotFoundError:
         parser.error(f"no certificate authority found at {config.CA}")
 
+    # laid out the way the server's own client packages are, since those are
+    # known to be accepted: the manifest at the root, the files beside it, and
+    # the manifest naming them under cert/
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:
-        package.writestr("MANIFEST/manifest.xml", build_manifest(
+        package.writestr("manifest.xml", build_manifest(
             str(uuid4()), f"FreeTAKServer enrollment {arguments.host}", truststore_name))
         package.writestr("fts.pref", build_preferences(
             arguments.host, arguments.port, truststore_name, arguments.password))
