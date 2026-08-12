@@ -30,10 +30,14 @@ from FreeTAKServer.core.util.certificate_generation import _p12_encryption  # no
 
 config = MainConfig.instance()
 
-# where a client looks for the files a package brought with it. This is the
-# form the server's own client packages use and that clients here accept; an
-# absolute path into the device's storage is not where a client keeps them.
-CLIENT_CERT_PATH = "/cert"
+# A client copies the files a package brings into its own certificate folder
+# and looks for them there, by a path relative to it. This and the names below
+# follow a working package from an official TAK server exactly, since the
+# client is particular about all of it.
+CLIENT_CERT_PATH = "cert"
+TRUSTSTORE_NAME = "caCert.p12"
+PREFERENCES_NAME = "config.pref"
+MANIFEST_NAME = "MANIFEST.xml"
 
 
 def build_truststore(ca_pem_path, password: str) -> bytes:
@@ -54,41 +58,42 @@ def build_truststore(ca_pem_path, password: str) -> bytes:
     )
 
 
-def build_preferences(host: str, port: int, truststore_name: str, password: str) -> str:
+def build_preferences(host: str, port: int, truststore_name: str, password: str,
+                      api_port: int, enrollment_port: int) -> str:
     """The connection a client should create, set to enrol for a certificate."""
     return f"""<?xml version='1.0' encoding='ASCII' standalone='yes'?>
 <preferences>
-    <preference version="1" name="cot_streams">
-        <entry key="count" class="class java.lang.Integer">1</entry>
-        <entry key="description0" class="class java.lang.String">FreeTAKServer_{host}</entry>
-        <entry key="enabled0" class="class java.lang.Boolean">true</entry>
-        <entry key="connectString0" class="class java.lang.String">{host}:{port}:ssl</entry>
-        <entry key="caLocation0" class="class java.lang.String">{CLIENT_CERT_PATH}/{truststore_name}</entry>
-        <entry key="caPassword0" class="class java.lang.String">{password}</entry>
-        <entry key="useAuth0" class="class java.lang.Boolean">true</entry>
-        <entry key="enrollForCertificateWithTrust0" class="class java.lang.Boolean">true</entry>
-        <entry key="cacheCreds0" class="class java.lang.String">Cache credentials</entry>
-    </preference>
-    <preference version="1" name="com.atakmap.app_preferences">
-        <entry key="displayServerConnectionWidget" class="class java.lang.Boolean">true</entry>
-        <entry key="caLocation" class="class java.lang.String">{CLIENT_CERT_PATH}/{truststore_name}</entry>
-        <entry key="caPassword" class="class java.lang.String">{password}</entry>
-    </preference>
+<preference version="1" name="cot_streams">
+    <entry key="count" class="class java.lang.Integer">1</entry>
+    <entry key="description0" class="class java.lang.String">FreeTAKServer_{host}</entry>
+    <entry key="enabled0" class="class java.lang.Boolean">true</entry>
+    <entry key="connectString0" class="class java.lang.String">{host}:{port}:ssl</entry>
+    <entry key="caLocation0" class="class java.lang.String">{CLIENT_CERT_PATH}/{truststore_name}</entry>
+    <entry key="caPassword0" class="class java.lang.String">{password}</entry>
+    <entry key="enrollForCertificateWithTrust0" class="class java.lang.Boolean">true</entry>
+    <entry key="useAuth0" class="class java.lang.Boolean">true</entry>
+    <entry key="cacheCreds0" class="class java.lang.String">Cache credentials</entry>
+</preference>
+<preference version="1" name="com.atakmap.app_preferences">
+    <entry key="displayServerConnectionWidget" class="class java.lang.Boolean">true</entry>
+    <entry key="apiSecureServerPort" class="class java.lang.String">{api_port}</entry>
+    <entry key="apiCertEnrollmentPort" class="class java.lang.String">{enrollment_port}</entry>
+</preference>
 </preferences>
 """
 
 
 def build_manifest(package_uid: str, name: str, truststore_name: str) -> str:
     return f"""<MissionPackageManifest version="2">
-    <Configuration>
-        <Parameter name="uid" value="{package_uid}"/>
-        <Parameter name="name" value="{name}"/>
-        <Parameter name="onReceiveDelete" value="true"/>
-    </Configuration>
-    <Contents>
-        <Content ignore="false" zipEntry="cert/fts.pref"/>
-        <Content ignore="false" zipEntry="cert/{truststore_name}"/>
-    </Contents>
+<Configuration>
+    <Parameter name="uid" value="{package_uid}"/>
+    <Parameter name="name" value="{name}"/>
+    <Parameter name="onReceiveDelete" value="true"/>
+</Configuration>
+<Contents>
+    <Content ignore="false" zipEntry="{PREFERENCES_NAME}"/>
+    <Content ignore="false" zipEntry="{truststore_name}"/>
+</Contents>
 </MissionPackageManifest>
 """
 
@@ -106,22 +111,21 @@ def main():
     arguments = parser.parse_args()
 
     output = arguments.output or f"enrollment-{arguments.host.replace('.', '-')}.zip"
-    truststore_name = f"truststore-{arguments.host.replace('.', '-')}.p12"
 
     try:
         truststore = build_truststore(config.CA, arguments.password)
     except FileNotFoundError:
         parser.error(f"no certificate authority found at {config.CA}")
 
-    # laid out the way the server's own client packages are, since those are
-    # known to be accepted: the manifest at the root, the files beside it, and
-    # the manifest naming them under cert/
+    # named and laid out as a working package from an official server is: the
+    # manifest naming the files exactly as they are stored, at the root
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:
-        package.writestr("manifest.xml", build_manifest(
-            str(uuid4()), f"FreeTAKServer enrollment {arguments.host}", truststore_name))
-        package.writestr("fts.pref", build_preferences(
-            arguments.host, arguments.port, truststore_name, arguments.password))
-        package.writestr(truststore_name, truststore)
+        package.writestr(MANIFEST_NAME, build_manifest(
+            str(uuid4()), f"FreeTAKServer enrollment {arguments.host}", TRUSTSTORE_NAME))
+        package.writestr(PREFERENCES_NAME, build_preferences(
+            arguments.host, arguments.port, TRUSTSTORE_NAME, arguments.password,
+            int(config.HTTPSTakAPIPort), int(config.CertificateEnrollmentPort)))
+        package.writestr(TRUSTSTORE_NAME, truststore)
 
     print(f"wrote {output}")
     print(f"  server      {arguments.host}:{arguments.port}")
