@@ -70,6 +70,29 @@ CHANNEL_REFRESH_SECONDS = 15
 _membership_cache = {}
 
 
+def system_user_for_common_name(common_name, db_controller):
+    """The system user a certificate common name belongs to.
+
+    A certificate issued to a user is named after them with their id appended,
+    so their name alone does not match it; one made by hand is named after
+    them exactly. Both are accepted, otherwise a user's channels never reach
+    the client holding their certificate.
+    """
+    if not common_name:
+        return None
+
+    users = db_controller.query_systemUser(query=f'name = "{common_name}"')
+    if users:
+        return users[0]
+
+    for user in db_controller.query_systemUser():
+        name = getattr(user, "name", None) or ""
+        uid = getattr(user, "uid", None) or ""
+        if name and uid and name + uid == common_name:
+            return user
+    return None
+
+
 def channels_for_common_name(common_name, db_controller, now):
     """Channels granted to a certificate common name, cached briefly."""
     if not common_name:
@@ -80,12 +103,12 @@ def channels_for_common_name(common_name, db_controller, now):
         return cached[1]
 
     try:
-        users = db_controller.query_systemUser(query=f'name = "{common_name}"')
+        user = system_user_for_common_name(common_name, db_controller)
     except Exception:
         # keep whatever was last known rather than silently isolating a client
         return cached[1] if cached else [PUBLIC_CHANNEL]
 
-    channels = parse_channels(getattr(users[0], "channels", None)) if users else [PUBLIC_CHANNEL]
+    channels = parse_channels(getattr(user, "channels", None)) if user else [PUBLIC_CHANNEL]
     _membership_cache[common_name] = (now, channels)
     return channels
 

@@ -93,3 +93,26 @@ def selection_for_client(client_uid=None, address=None):
     user = users[0]
     selection = getattr(user, "active_channels", None)
     return getattr(user, "CN", None), parse_channels(selection) if selection else None
+
+
+def allowed_channels_for(common_name):
+    """The channels a certificate common name is assigned to.
+
+    Returns None when the holder cannot be looked up, meaning nothing is
+    known about what they are assigned to rather than that they have nothing.
+    """
+    from FreeTAKServer.core.configuration.ChannelConstants import system_user_for_common_name
+    from FreeTAKServer.core.persistence.DatabaseController import DatabaseController
+
+    if not common_name:
+        return None
+
+    try:
+        user = system_user_for_common_name(common_name, DatabaseController())
+    except Exception as ex:
+        logger.debug("failed resolving channels for %s: %s", common_name, ex)
+        return None
+
+    if user is None:
+        return None
+    return parse_channels(getattr(user, "channels", None))

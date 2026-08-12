@@ -64,7 +64,10 @@ def get_groups():
     appearing here does not grant access to its traffic.
     """
     from FreeTAKServer.core.persistence.DatabaseController import DatabaseController
-    from FreeTAKServer.core.persistence.channel_selection import selection_for_client
+    from FreeTAKServer.core.persistence.channel_selection import (
+        allowed_channels_for,
+        selection_for_client,
+    )
 
     groups = []
     try:
@@ -73,16 +76,21 @@ def get_groups():
         channels = []
 
     # the client does not say who it is, so it is matched on the address it
-    # calls from; when it cannot be matched every channel is listed as active,
-    # which is what this reported before any of them could be switched off
-    _, selection = selection_for_client(
+    # calls from; when it cannot be matched every channel is listed, which is
+    # what this reported before a client could be told apart from another
+    common_name, selection = selection_for_client(
         client_uid=request.args.get("clientUid"), address=request.remote_addr
     )
+    allowed = allowed_channels_for(common_name)
 
     # every channel is reported in both directions, as TAK clients expect, and
     # keeps the bit position it was created with so a client's stored selection
     # still refers to the same channel after another one is added or removed
     for channel in channels:
+        # a client is only shown the channels it is assigned to, since the
+        # others carry traffic it would never be given
+        if allowed is not None and channel.name not in allowed:
+            continue
         for direction in ("IN", "OUT"):
             groups.append({
                 "name": channel.name,
@@ -99,16 +107,19 @@ def get_groups():
     # channel by that name, so it carries the same selected state
     from FreeTAKServer.core.configuration.ChannelConstants import PUBLIC_CHANNEL
 
-    for direction in ("IN", "OUT"):
-        groups.append({
-            "name": "__ANON__",
-            "direction": direction,
-            "created": "2023-02-22",
-            "type": "SYSTEM",
-            "bitpos": 2,
-            "active": selection is None or PUBLIC_CHANNEL in selection,
-            "description": "",
-        })
+    # a client assigned to named channels is not on the shared one, so it is
+    # only offered when the client is actually on it
+    if allowed is None or PUBLIC_CHANNEL in allowed:
+        for direction in ("IN", "OUT"):
+            groups.append({
+                "name": "__ANON__",
+                "direction": direction,
+                "created": "2023-02-22",
+                "type": "SYSTEM",
+                "bitpos": 2,
+                "active": selection is None or PUBLIC_CHANNEL in selection,
+                "description": "",
+            })
 
     return {
         "version": "3",
