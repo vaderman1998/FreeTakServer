@@ -23,9 +23,10 @@ from uuid import uuid4
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from cryptography import x509  # noqa: E402
-from cryptography.hazmat.primitives.serialization import pkcs12, BestAvailableEncryption  # noqa: E402
+from cryptography.hazmat.primitives.serialization import pkcs12  # noqa: E402
 
 from FreeTAKServer.core.configuration.MainConfig import MainConfig  # noqa: E402
+from FreeTAKServer.core.util.certificate_generation import _p12_encryption  # noqa: E402
 
 config = MainConfig.instance()
 
@@ -45,7 +46,9 @@ def build_truststore(ca_pem_path, password: str) -> bytes:
         key=None,
         cert=None,
         cas=[ca_certificate],
-        encryption_algorithm=BestAvailableEncryption(password.encode()),
+        # TAK clients cannot read a modern AES encrypted store, and a client
+        # that cannot open the store has nothing to trust the server with
+        encryption_algorithm=_p12_encryption(password.encode()),
     )
 
 
