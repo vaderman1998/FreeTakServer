@@ -21,4 +21,8 @@ class OrchestratorConstants:
         self.HEALTHCHECK = 'HealthCheck'
         self.LOCALHOST = '127.0.0.1'
 
-        self.DEFAULTCONNECTIONGEOCHATOBJ = config.ConnectionMessage
+        # read as each client connects, so a message changed from the UI
+        # reaches the next client without restarting the server
+        from FreeTAKServer.core.configuration.connection_message import connection_message
+
+        self.DEFAULTCONNECTIONGEOCHATOBJ = connection_message()

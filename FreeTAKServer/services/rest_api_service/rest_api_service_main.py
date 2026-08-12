@@ -266,6 +266,34 @@ def systemUsers(empty=None):
 
     emit('systemUsersUpdate', json.dumps(jsondata))
 
+@app.route("/ConnectionMessage", methods=["GET"])
+@auth.login_required(role=ADMIN_ROLE)
+def get_connection_message():
+    """The message clients are greeted with when they connect."""
+    from FreeTAKServer.core.configuration.connection_message import connection_message
+
+    return {"message": connection_message() or ""}, 200
+
+
+@app.route("/ConnectionMessage", methods=["PUT"])
+@auth.login_required(role=ADMIN_ROLE)
+def put_connection_message():
+    """Change the message clients are greeted with."""
+    from FreeTAKServer.core.configuration.connection_message import set_connection_message
+
+    body = request.get_json(silent=True) or {}
+    if "message" not in body:
+        return {"message": "a message is required"}, 400
+
+    try:
+        stored = set_connection_message(body["message"])
+    except Exception as ex:
+        logger.error("failed setting the connection message: %s", ex, exc_info=True)
+        return {"message": "An error occurred saving the connection message."}, 500
+
+    return {"message": stored or ""}, 200
+
+
 @app.route('/ManageSystemUser/getAll', methods=["GET"])
 @auth.login_required(role=ADMIN_ROLE)
 def getSystemUsersRest():
