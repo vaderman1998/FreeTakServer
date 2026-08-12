@@ -64,6 +64,7 @@ def get_groups():
     appearing here does not grant access to its traffic.
     """
     from FreeTAKServer.core.persistence.DatabaseController import DatabaseController
+    from FreeTAKServer.core.persistence.channel_selection import selection_for_client
 
     groups = []
     try:
@@ -71,21 +72,33 @@ def get_groups():
     except Exception:
         channels = []
 
-    # every channel is reported in both directions, as TAK clients expect
-    for index, channel in enumerate(channels):
+    # the client does not say who it is, so it is matched on the address it
+    # calls from; when it cannot be matched every channel is listed as active,
+    # which is what this reported before any of them could be switched off
+    _, selection = selection_for_client(
+        client_uid=request.args.get("clientUid"), address=request.remote_addr
+    )
+
+    # every channel is reported in both directions, as TAK clients expect, and
+    # keeps the bit position it was created with so a client's stored selection
+    # still refers to the same channel after another one is added or removed
+    for channel in channels:
         for direction in ("IN", "OUT"):
             groups.append({
                 "name": channel.name,
                 "direction": direction,
                 "created": "2023-02-22",
                 "type": "SYSTEM",
-                "bitpos": index + 3,
-                "active": True,
+                "bitpos": channel.bitpos,
+                "active": selection is None or channel.name in selection,
                 "description": channel.description or "",
             })
 
     # the anonymous group is what clients fall back to, and is the only group
-    # when no channels have been defined
+    # when no channels have been defined. Clients know this server's public
+    # channel by that name, so it carries the same selected state
+    from FreeTAKServer.core.configuration.ChannelConstants import PUBLIC_CHANNEL
+
     for direction in ("IN", "OUT"):
         groups.append({
             "name": "__ANON__",
@@ -93,7 +106,7 @@ def get_groups():
             "created": "2023-02-22",
             "type": "SYSTEM",
             "bitpos": 2,
-            "active": True,
+            "active": selection is None or PUBLIC_CHANNEL in selection,
             "description": "",
         })
 

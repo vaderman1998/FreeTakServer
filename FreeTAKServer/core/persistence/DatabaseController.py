@@ -110,6 +110,10 @@ class DatabaseController:
             # channel membership for CoT traffic segregation, and the
             # authorization role formerly read from the group column
             "SystemUser": [("channels", "VARCHAR(255)"), ("role", "VARCHAR(15)")],
+            # the channel selection a client made from its TAK client
+            "User": [("active_channels", "VARCHAR(255)")],
+            # channels predating fixed bit positions are backfilled below
+            "Channel": [("bitpos", "INTEGER")],
         }
         for table, columns in migrations.items():
             try:
@@ -129,6 +133,47 @@ class DatabaseController:
                     )
                 except Exception as ex:
                     print(f"failed adding column {table}.{name}: {ex}")
+
+        DatabaseController.backfill_channel_bitpos(connection)
+
+    @staticmethod
+    def backfill_channel_bitpos(connection):
+        """Give channels created before bit positions existed one each.
+
+        A channel without a bit position cannot be told apart from another by
+        a client, so the existing ones are numbered in the order they were
+        listed in before, which is the order they were created.
+        """
+        from sqlalchemy import text
+        from FreeTAKServer.model.SQLAlchemy.channel import FIRST_CHANNEL_BITPOS
+
+        try:
+            rows = list(connection.execute(text("SELECT uid, bitpos FROM Channel")))
+        except Exception:
+            return
+
+        taken = {row[1] for row in rows if row[1] is not None}
+        bitpos = FIRST_CHANNEL_BITPOS
+        for uid, existing in rows:
+            if existing is not None:
+                continue
+            while bitpos in taken:
+                bitpos += 1
+            taken.add(bitpos)
+            try:
+                connection.execute(
+                    text("UPDATE Channel SET bitpos = :bitpos WHERE uid = :uid"),
+                    {"bitpos": bitpos, "uid": uid},
+                )
+            except Exception as ex:
+                print(f"failed setting bitpos for channel {uid}: {ex}")
+
+        # this is an update rather than a schema change, so it is not committed
+        # for us and would be rolled back when the connection closes
+        try:
+            connection.commit()
+        except Exception as ex:
+            print(f"failed committing channel bit positions: {ex}")
 
     def create_Sessionmaker(self):
         SessionMaker = sessionmaker(bind=self.engine)
@@ -250,7 +295,29 @@ class DatabaseController:
             self.session.commit()
             raise Exception(e)
     def create_channel(self, **args):
+        if not args.get("bitpos"):
+            args["bitpos"] = self.next_channel_bitpos()
         return self._create(controller=self.ChannelTableController, **args)
+
+    def next_channel_bitpos(self):
+        """The next free bit position for a channel.
+
+        Positions are never reused while a channel holds one, so a client's
+        stored selection keeps meaning the same channel.
+        """
+        from FreeTAKServer.model.SQLAlchemy.channel import FIRST_CHANNEL_BITPOS
+
+        try:
+            taken = {
+                getattr(channel, "bitpos", None) for channel in self.query_channel()
+            }
+        except Exception:
+            taken = set()
+
+        bitpos = FIRST_CHANNEL_BITPOS
+        while bitpos in taken:
+            bitpos += 1
+        return bitpos
 
     def query_channel(self, query="1=1", columns=['*']):
         return self._query(controller=self.ChannelTableController, query=query, columns=columns)

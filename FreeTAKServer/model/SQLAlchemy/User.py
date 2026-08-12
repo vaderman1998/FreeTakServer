@@ -27,5 +27,9 @@ class User(Base):
     callsign = Column(String(100))
     CN = Column(String(100), nullable=True)
     IP = Column(String(100))
+    # the channels this client asked to be active on, a subset of the ones its
+    # certificate allows; None means it has expressed no preference and is
+    # active on all of them
+    active_channels = Column(String(255), nullable=True, default=None)
     CoT_id = Column(String(100), ForeignKey("Event.uid"))
     CoT = relationship(Event, uselist=False, cascade="all, delete", backref="User")

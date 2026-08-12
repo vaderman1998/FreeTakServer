@@ -1,5 +1,6 @@
 from FreeTAKServer.core.configuration.ChannelConstants import (
     CHANNEL_REFRESH_SECONDS,
+    active_channels,
     channels_for_common_name,
     parse_channels,
 )
@@ -448,12 +449,24 @@ class TCPCoTServiceMain(DigitalPyService):
                 if model_object is not None:
                     connections_by_uid[getattr(model_object, "uid", None)] = connection
 
+            # what each client chose to listen to, read once for all of them
+            selections = {}
+            try:
+                for user in db_controller.query_user():
+                    selection = getattr(user, "active_channels", None)
+                    if selection:
+                        selections[getattr(user, "uid", None)] = selection
+            except Exception as ex:
+                self.logger.debug("could not read channel selections: %s", ex)
+
             for user_id, entry in list(self.client_information_queue.items()):
                 client_information = entry[1]
                 common_name = getattr(client_information, "common_name", None)
                 if not common_name:
                     continue
                 channels = channels_for_common_name(common_name, db_controller, now)
+                # a client only receives the channels it asked to be active on
+                channels = active_channels(channels, selections.get(user_id))
                 client_information.channels = channels
                 connection = connections_by_uid.get(user_id)
                 if connection is not None:

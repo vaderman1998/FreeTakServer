@@ -88,3 +88,20 @@ def channels_for_common_name(common_name, db_controller, now):
     channels = parse_channels(getattr(users[0], "channels", None)) if users else [PUBLIC_CHANNEL]
     _membership_cache[common_name] = (now, channels)
     return channels
+
+
+def active_channels(allowed, selection) -> list:
+    """The channels a client should actually receive traffic on.
+
+    A client chooses which of the channels it is allowed on to listen to.
+    The choice can only narrow that set, never widen it, and a client that
+    has chosen nothing is active on everything it is allowed.
+    """
+    allowed = parse_channels(allowed)
+    if selection is None:
+        return allowed
+
+    chosen = [name for name in parse_channels(selection) if name in allowed]
+    # a selection that leaves nothing is treated as no selection, so a client
+    # cannot silence itself into looking disconnected
+    return chosen or allowed

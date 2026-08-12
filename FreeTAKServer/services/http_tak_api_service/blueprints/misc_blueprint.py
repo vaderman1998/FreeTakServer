@@ -36,13 +36,21 @@ def clientEndPoint():
 
 @page.route('/Marti/api/groups/active', methods=['PUT'])
 def put_groups_active():
-    """Accept a client's channel selection.
+    """Record which of its channels a client wants to be active on.
 
-    Which channels a client may actually exchange traffic on is decided by
-    the server from the certificate it connects with, so this records the
-    client's preference and acknowledges it; clients hide the channel list
-    when this endpoint is missing.
+    The certificate a client connects with decides which channels it may use
+    at all; this narrows that set to the ones the operator selected in their
+    TAK client. Storing it against the client's uid keeps one device's choice
+    from changing another's, even when both use the same certificate.
     """
+    from FreeTAKServer.core.persistence.channel_selection import store_selection
+
+    client_uid = request.args.get("clientUid")
+    if not client_uid:
+        return {"version": "3", "type": "java.lang.Boolean", "data": False,
+                "nodeId": config.nodeID}, 400
+
+    store_selection(client_uid, request.get_json(silent=True))
     return {
         "version": "3",
         "type": "java.lang.Boolean",

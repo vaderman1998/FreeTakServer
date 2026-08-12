@@ -1,6 +1,9 @@
-from sqlalchemy import Column, String
+from sqlalchemy import Column, Integer, String
 
 from FreeTAKServer.model.SQLAlchemy.Root import Base
+
+# 0 and 1 are reserved by TAK clients, and 2 is the anonymous channel
+FIRST_CHANNEL_BITPOS = 3
 
 
 class Channel(Base):
@@ -14,6 +17,10 @@ class Channel(Base):
     uid = Column(String(80), primary_key=True)
     name = Column(String(64), nullable=False, unique=True)
     description = Column(String(255), nullable=True, default=None)
+    # clients identify a channel by its bit position, so it is fixed when the
+    # channel is created rather than derived from the order channels are listed
+    # in, which would move every later channel when one is removed
+    bitpos = Column(Integer, nullable=True, default=None)
 
     def __init__(self, **kwargs):
         for property, value in kwargs.items():
