@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "FreeTAKServer"
-version = "2.12.0"
+version = "2.12.1"
 description = "An open source server for the TAK family of applications."
 authors = ["FreeTAKTeam <FreeTakTeam@gmail.com>"]
 readme = "README.md"

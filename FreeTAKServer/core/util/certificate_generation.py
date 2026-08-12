@@ -80,6 +80,21 @@ def certificate_request_common_name(csr_pem: bytes):
     return None
 
 
+def _subject_alternative_names(addresses):
+    """The addresses a certificate says its holder answers to."""
+    import ipaddress
+
+    names = []
+    for address in addresses:
+        if not address:
+            continue
+        try:
+            names.append(x509.IPAddress(ipaddress.ip_address(str(address))))
+        except ValueError:
+            names.append(x509.DNSName(str(address)))
+    return names
+
+
 def _p12_encryption(password: bytes):
     # TAK clients (ATAK/iTAK/WinTAK) expect the legacy PKCS12 encryption that
     # OpenSSL 1.1.x produced (SHA1 + 3DES); modern AES-256 defaults are not
@@ -498,7 +513,7 @@ class AtakOfTheCerts:
                 ))
 
     def _generate_certificate(self, common_name: str, p12path: str, pempath: str = config.pemDir,
-                              expiry_time_secs: int = 31536000) -> None:
+                              expiry_time_secs: int = 31536000, server_addresses=None) -> None:
         """
         Create a certificate and p12 file
         :param cn: Common Name for certificate
@@ -513,7 +528,7 @@ class AtakOfTheCerts:
             ca_pem = x509.load_pem_x509_certificate(open(self.capempath, 'rb').read())
             serial_number = random.getrandbits(64)
             now = datetime.now(timezone.utc)
-            cert = (
+            builder = (
                 x509.CertificateBuilder()
                 .subject_name(_fts_x509_name(common_name))
                 .issuer_name(ca_pem.subject)
@@ -521,8 +536,16 @@ class AtakOfTheCerts:
                 .not_valid_before(now)
                 .not_valid_after(now + timedelta(seconds=expiry_time_secs))
                 .public_key(self.key.public_key())
-                .sign(ca_key, hashes.SHA256())
             )
+            # a client checks who it is talking to against the names in the
+            # certificate, and has not accepted a name given only as the
+            # common name for years; without these it refuses the server
+            if server_addresses:
+                builder = builder.add_extension(
+                    x509.SubjectAlternativeName(_subject_alternative_names(server_addresses)),
+                    critical=False,
+                )
+            cert = builder.sign(ca_key, hashes.SHA256())
             p12data = pkcs12.serialize_key_and_certificates(
                 name=common_name.encode("UTF-8"),
                 key=self.key,
@@ -550,7 +573,12 @@ class AtakOfTheCerts:
         pempath = pathlib.Path(config.certsPath,f"{common_name}.pem")
         p12path = pathlib.Path(config.certsPath,f"{common_name}.p12")
         self._generate_key(keypath)
-        self._generate_certificate(common_name=common_name, pempath=pempath, p12path=p12path, expiry_time_secs=expiry_time_secs)
+        server_addresses = None
+        if cert.lower() == "server":
+            # the addresses clients reach this server on, so they can check it
+            server_addresses = [str(config.UserConnectionIP), socket.gethostname(), "localhost", "127.0.0.1"]
+        self._generate_certificate(common_name=common_name, pempath=pempath, p12path=p12path,
+                                   expiry_time_secs=expiry_time_secs, server_addresses=server_addresses)
         if cert.lower() == "server":
             copyfile(keypath, str(keypath) + ".unencrypted")
 
