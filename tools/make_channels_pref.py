@@ -8,9 +8,15 @@ ATAK hides its channel list behind two preferences it never sets itself:
 
 Without the per-host one, ATAK still fetches /Marti/api/groups/all and still
 announces that a server's channels changed, but the channel overlay lists no
-servers and so appears empty. The preferences are normally delivered by a TAK
-Server enrollment package; this writes the same file so a client that was set
-up from a data package or by hand can be switched on too.
+servers and so appears empty.
+
+A TAK server delivers these when a client enrolls for its certificate, in the
+profile served from /Marti/api/tls/profile/enrollment on port 8446. FreeTAKServer
+has no enrollment, so a client set up from a data package never receives them
+and its channel list stays empty however correct the server's channels are.
+This writes the same preferences so such a client can be switched on by hand.
+
+Both entries are strings, matching what OpenTAKServer sends to real clients.
 
 Import the result in ATAK with Import Manager, or hand it to
 repoint_data_package.py's output to ship it alongside a client certificate.
@@ -35,13 +41,13 @@ def build(hosts):
         preferences, "preference", {"version": "1", "name": APP_PREFERENCES}
     )
 
-    # the channels UI itself, read as a boolean
+    # the channels UI itself
     entry = ET.SubElement(
-        preference, "entry", {"key": ENABLE_CHANNELS, "class": "class java.lang.Boolean"}
+        preference, "entry", {"key": ENABLE_CHANNELS, "class": "class java.lang.String"}
     )
     entry.text = "true"
 
-    # and the list for each server, read as the string "true"
+    # and the list for each server, keyed by the address as entered in ATAK
     for host in hosts:
         entry = ET.SubElement(
             preference,
