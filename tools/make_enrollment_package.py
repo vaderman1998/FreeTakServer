@@ -69,7 +69,7 @@ def build_truststore(ca_pem_path, password: str) -> bytes:
 
 
 def build_preferences(host: str, port: int, truststore_name: str, password: str,
-                      api_port: int, enrollment_port: int) -> str:
+                      enrollment_port: int) -> str:
     """The connection a client should create, set to enrol for a certificate."""
     return f"""<?xml version='1.0' encoding='ASCII' standalone='yes'?>
 <preferences>
@@ -86,7 +86,6 @@ def build_preferences(host: str, port: int, truststore_name: str, password: str,
 </preference>
 <preference version="1" name="com.atakmap.app_preferences">
     <entry key="displayServerConnectionWidget" class="class java.lang.Boolean">true</entry>
-    <entry key="apiSecureServerPort" class="class java.lang.String">{api_port}</entry>
     <entry key="apiCertEnrollmentPort" class="class java.lang.String">{enrollment_port}</entry>
 </preference>
 </preferences>
@@ -134,7 +133,7 @@ def main():
             str(uuid4()), f"FreeTAKServer enrollment {arguments.host}", TRUSTSTORE_NAME))
         package.writestr(PREFERENCES_NAME, build_preferences(
             arguments.host, arguments.port, TRUSTSTORE_NAME, arguments.password,
-            int(config.HTTPSTakAPIPort), int(config.CertificateEnrollmentPort)))
+            int(config.CertificateEnrollmentPort)))
         package.writestr(TRUSTSTORE_NAME, truststore)
 
     print(f"wrote {output}")
